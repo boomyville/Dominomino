@@ -21,7 +21,13 @@ _global_script_class_icons={
 [application]
 
 config/name="Dominomino"
+run/main_scene="res://scenes/game.tscn"
 config/icon="res://icon.png"
+
+[autoload]
+
+GameState="*res://scripts/game_state.gd"
+Settings="*res://scripts/settings.gd"
 
 [display]
 

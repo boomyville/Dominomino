@@ -21,6 +21,10 @@ onready var base_sprite = $BaseSprite
 onready var left_pip_sprite = $LeftPip/PipSprite
 onready var right_pip_sprite = $RightPip/PipSprite
 
+# Shaders
+const OUTLINE_SHADER = preload("res://assets/shaders/playable_outline.shader") 
+var shader_material: ShaderMaterial = null
+
 func set_value(left_val: int, right_val: int) -> void:
 	left_pip_value = left_val
 	right_pip_value = right_val
@@ -103,7 +107,6 @@ func downgrade() -> void:
 		upgrade_level -= 1
 
 func _update_background_skin() -> void:
-	# 1. TOOL SAFETY GUARD: Ensure base_sprite isn't Nil before applying textures
 	if base_sprite == null:
 		return
 		
@@ -143,9 +146,31 @@ func set_domino_data(new_data) -> void:
 		_update_background_skin()
 		_update_pip_visuals()
 
+func check_playability() -> void:
+	# 1. Calculate total resource cost from global state
+	var cost = GameState.calculate_domino_cost(left_pip_value, right_pip_value)
+	var can_afford = GameState.current_player_energy >= cost
+	print("Domino energy cost: ", cost, " | Global Energy: ", GameState.current_player_energy, " | Can Afford: ", can_afford)
+	
+	# 2. Safely verify base_sprite exists and has a material assigned
+	if base_sprite and base_sprite.material:
+		# Explicitly cast generic Material to ShaderMaterial so we can use set_shader_param()
+		var active_material = base_sprite.material as ShaderMaterial
+		if active_material:
+			active_material.set_shader_param("is_active", can_afford)
+	else:
+		print("WARNING: check_playability called but shader_material is target uniform null.")
+
 func _ready() -> void:
+	if base_sprite:
+		shader_material = ShaderMaterial.new()
+		shader_material.shader = OUTLINE_SHADER
+		base_sprite.material = shader_material
+		print("Created and assigned fresh ShaderMaterial to base_sprite.")
+		
 	if domino_data != null:
 		left_pip_value = domino_data.base_left_pip
 		right_pip_value = domino_data.base_right_pip
 		_update_pip_visuals()
 		_update_background_skin()
+	check_playability()
