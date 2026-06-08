@@ -21,7 +21,6 @@ __meta__ = {
 position = Vector2( 72, 468 )
 
 [node name="PlayerHand" parent="PlayerHandPosition" instance=ExtResource( 3 )]
-columns = 8
 
 [node name="UI" type="CanvasLayer" parent="."]
 

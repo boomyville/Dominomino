@@ -5,6 +5,10 @@ extends Area2D
 # Enums
 enum OwnerType { PLAYER, ENEMY, NONE }
 enum StatusType { VOID, DISCARD, DRAW, HAND, BOARD, OPPONENT }
+enum DragState { IDLE, CLICKED }
+
+# Signals
+signal domino_clicked(domino)
 
 # Exportable data
 export(Resource) var domino_data setget set_domino_data
@@ -15,6 +19,7 @@ var right_pip_value: int = 0
 var current_owner: int = OwnerType.NONE
 var current_status: int = StatusType.VOID
 var upgrade_level: int = 1
+var drag_state: int = DragState.IDLE
 
 # Node references
 onready var base_sprite = $BaseSprite
@@ -162,6 +167,9 @@ func check_playability() -> void:
 		print("WARNING: check_playability called but shader_material is target uniform null.")
 
 func _ready() -> void:
+	input_pickable = true
+	print("Domino _ready | input_pickable: ", input_pickable, " | monitoring: ", monitoring)
+   
 	if base_sprite:
 		shader_material = ShaderMaterial.new()
 		shader_material.shader = OUTLINE_SHADER
@@ -174,3 +182,35 @@ func _ready() -> void:
 		_update_pip_visuals()
 		_update_background_skin()
 	check_playability()
+
+func _input_event(_viewport, event, _shape_idx) -> void:
+	print("Domino _input_event fired | event: ", event)
+	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT and event.pressed:
+		print("Domino LMB detected | drag_state: ", drag_state, " | current_status: ", current_status, " | StatusType.HAND: ", StatusType.HAND)
+		if drag_state == DragState.IDLE and current_status == StatusType.HAND:
+			drag_state = DragState.CLICKED
+			print("Domino CLICKED — emitting signal")
+			emit_signal("domino_clicked", self)
+
+func start_drag() -> void:
+	drag_state = DragState.CLICKED
+	z_as_relative = false
+	z_index = 1000
+	set_process(true)
+
+func stop_drag() -> void:
+	drag_state = DragState.IDLE
+	z_index = 0
+	set_process(false)
+
+func _process(_delta) -> void:
+	if drag_state == DragState.CLICKED:
+		global_position = get_global_mouse_position()
+
+func lock_to_board() -> void:
+	stop_drag()
+	current_status = StatusType.BOARD
+	if base_sprite:
+		base_sprite.material = null
+	input_pickable = false
+	z_as_relative = false

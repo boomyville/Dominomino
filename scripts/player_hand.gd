@@ -23,3 +23,7 @@ func add_domino_to_hand(data: DominoData) -> void:
 	new_domino.domino_data = data
 	new_domino.current_status = new_domino.StatusType.HAND
 	new_domino.current_owner = new_domino.OwnerType.PLAYER
+
+	var game_node = get_tree().current_scene
+	print("Connecting domino_clicked to: ", game_node.name)
+	new_domino.connect("domino_clicked", game_node, "_on_domino_clicked")
