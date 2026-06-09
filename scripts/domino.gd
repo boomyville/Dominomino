@@ -184,9 +184,9 @@ func _ready() -> void:
 	check_playability()
 
 func _input_event(_viewport, event, _shape_idx) -> void:
-	print("Domino _input_event fired | event: ", event)
+	# CHANGE: Look for event.pressed instead of not event.pressed
 	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT and event.pressed:
-		print("Domino LMB detected | drag_state: ", drag_state, " | current_status: ", current_status, " | StatusType.HAND: ", StatusType.HAND)
+		print("Domino LMB detected | drag_state: ", drag_state, " | current_status: ", current_status)
 		if drag_state == DragState.IDLE and current_status == StatusType.HAND:
 			drag_state = DragState.CLICKED
 			print("Domino CLICKED — emitting signal")
@@ -214,3 +214,27 @@ func lock_to_board() -> void:
 		base_sprite.material = null
 	input_pickable = false
 	z_as_relative = false
+
+func return_to_hand(origin: Vector2) -> void:
+	drag_state = DragState.IDLE
+	z_index = 0
+	set_process(false)
+	
+	print("return_to_hand | current pos: ", position, " | target local origin: Vector2.ZERO")
+	
+	var tween = Tween.new()
+	add_child(tween)
+	
+	# FIX: Animate local "position" back to its container home (0, 0)
+	var result = tween.interpolate_property(
+		self, 
+		"position", 
+		position, 
+		Vector2.ZERO, 
+		0.25, # 1.0 second is a bit slow for a card snap back; 0.25s feels snappier!
+		Tween.TRANS_CUBIC, 
+		Tween.EASE_OUT
+	)
+	
+	tween.start()
+	tween.connect("tween_completed", tween, "queue_free")

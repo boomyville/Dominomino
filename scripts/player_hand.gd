@@ -5,7 +5,7 @@ const DOMINO_SCENE = preload("res://scenes/domino.tscn")
 func add_domino_to_hand(data: DominoData) -> void:
 	# 1. Create a lightweight, empty structural UI slot box
 	var slot_wrapper = Control.new()
-	
+	slot_wrapper.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# Tell the layout container exactly how much space to reserve for this tile
 	# (Matches your horizontal footprint size!)
 	slot_wrapper.rect_min_size = Vector2(48, 24)

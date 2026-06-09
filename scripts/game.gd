@@ -16,6 +16,7 @@ var player_discard_pile: Array = []
 var player_void_pile: Array = []
 var current_play_state = PlayState.IDLE
 var active_domino = null
+var active_domino_origin = Vector2.ZERO 
 
 func _ready() -> void:
 	# Randomize Godot's internal math engine seed so every run is unique
@@ -44,14 +45,16 @@ func _process(_delta) -> void:
 			board.clear_preview()
 
 func _on_domino_clicked(domino) -> void:
+	print("_on_domino_clicked | play_state: ", current_play_state, " | active_domino: ", active_domino)
 	if current_play_state != PlayState.IDLE:
 		return
 	active_domino = domino
+	active_domino_origin = domino.global_position  # ADD THIS
 	current_play_state = PlayState.DRAGGING
 	domino.start_drag()
 
 func _input(event) -> void:
-	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT and event.pressed:
+	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT and not event.pressed:
 		if current_play_state == PlayState.DRAGGING and active_domino != null:
 			_try_place_active_domino()
 
@@ -61,7 +64,9 @@ func _try_place_active_domino() -> void:
 	var gy = int(grid_pos.y)
 	
 	if not board.is_placement_valid(gx, gy):
-		return  # Stay in drag state, invalid placement
+		board.clear_preview()
+		_cancel_active_domino()
+		return
 	
 	board.clear_preview()
 	
@@ -88,6 +93,15 @@ func _try_place_active_domino() -> void:
 	current_play_state = PlayState.IDLE
 	_toggle_verification_ui(true)
 
+func _cancel_active_domino() -> void:
+	if active_domino == null:
+		return
+	var domino = active_domino
+	var origin = active_domino_origin
+	active_domino = null
+	current_play_state = PlayState.IDLE
+	board.clear_preview()
+	domino.return_to_hand(origin)  # domino handles its own tween
 
 func _sort_board_dominoes_by_y() -> void:
 	var dominoes = []

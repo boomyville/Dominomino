@@ -21,6 +21,7 @@ __meta__ = {
 position = Vector2( 72, 468 )
 
 [node name="PlayerHand" parent="PlayerHandPosition" instance=ExtResource( 3 )]
+mouse_filter = 2
 
 [node name="UI" type="CanvasLayer" parent="."]
 
