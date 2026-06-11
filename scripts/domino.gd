@@ -20,6 +20,7 @@ var current_owner: int = OwnerType.NONE
 var current_status: int = StatusType.VOID
 var upgrade_level: int = 1
 var drag_state: int = DragState.IDLE
+var drag_offset: Vector2 = Vector2.ZERO
 
 # Node references
 onready var base_sprite = $BaseSprite
@@ -184,13 +185,9 @@ func _ready() -> void:
 	check_playability()
 
 func _input_event(_viewport, event, _shape_idx) -> void:
-	# CHANGE: Look for event.pressed instead of not event.pressed
 	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT and event.pressed:
-		print("Domino LMB detected | drag_state: ", drag_state, " | current_status: ", current_status)
-		if drag_state == DragState.IDLE and current_status == StatusType.HAND:
-			drag_state = DragState.CLICKED
-			print("Domino CLICKED — emitting signal")
-			emit_signal("domino_clicked", self)
+		if drag_state == DragState.IDLE and (current_status == StatusType.HAND or current_status == StatusType.BOARD):
+			emit_signal("domino_clicked", self) 
 
 func start_drag() -> void:
 	drag_state = DragState.CLICKED
@@ -203,9 +200,13 @@ func stop_drag() -> void:
 	z_index = 0
 	set_process(false)
 
+func start_drag_from(click_global_pos: Vector2) -> void:
+	drag_offset = global_position - click_global_pos
+	start_drag()
+
 func _process(_delta) -> void:
 	if drag_state == DragState.CLICKED:
-		global_position = get_global_mouse_position()
+		global_position = get_global_mouse_position() + drag_offset
 
 func lock_to_board() -> void:
 	stop_drag()
@@ -237,4 +238,4 @@ func return_to_hand(origin: Vector2) -> void:
 	)
 	
 	tween.start()
-	tween.connect("tween_completed", tween, "queue_free")
+	tween.connect("tween_all_completed", tween, "queue_free")

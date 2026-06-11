@@ -17,6 +17,10 @@ var player_void_pile: Array = []
 var current_play_state = PlayState.IDLE
 var active_domino = null
 var active_domino_origin = Vector2.ZERO 
+var last_placed_domino = null
+var last_placed_origin = Vector2.ZERO
+var last_placed_slot = null  # Track the original hand slot of the last placed domino for undo purposes
+var domino_snap_offset: Vector2 = Vector2.ZERO
 
 func _ready() -> void:
 	# Randomize Godot's internal math engine seed so every run is unique
@@ -34,9 +38,21 @@ func _ready() -> void:
 	GameState.connect("player_energy_changed", self, "_on_energy_adjusted")
 	_refresh_hand_playability()
 
+	# Calculate domino snap offset from actual sprite dimensions
+	# When the domino is placed over the board, we have to account for the difference 
+	# between the sprite's center point and the grid slot's center point to get a clean snap
+	# We calculate this once when the game starts by loading a temporary domino instance, 
+	# measuring its sprite, and then freeing it immediately 
+	var temp = preload("res://scenes/domino.tscn").instance()
+	var sprite = temp.get_node_or_null("BaseSprite")
+	if sprite and sprite.texture:
+		var size = sprite.texture.get_size() * sprite.scale
+		domino_snap_offset = Vector2(size.x * 0.25, size.y * 0.5)
+	temp.free()
+
 func _process(_delta) -> void:
 	if active_domino != null and current_play_state == PlayState.DRAGGING:
-		var grid_pos = board.world_to_grid(get_global_mouse_position())
+		var grid_pos = board.world_to_grid(active_domino.global_position + domino_snap_offset)
 		var gx = int(grid_pos.x)
 		var gy = int(grid_pos.y)
 		if board.is_placement_valid(gx, gy):
@@ -45,21 +61,35 @@ func _process(_delta) -> void:
 			board.clear_preview()
 
 func _on_domino_clicked(domino) -> void:
-	print("_on_domino_clicked | play_state: ", current_play_state, " | active_domino: ", active_domino)
+	print("_on_domino_clicked | state: ", current_play_state, " | domino: ", domino, " | last_placed: ", last_placed_domino)
+	if current_play_state == PlayState.VERIFYING and domino == last_placed_domino:
+		board.remove_domino_from_matrix(last_placed_domino)
+		active_domino = last_placed_domino
+		active_domino_origin = last_placed_origin
+		active_domino.current_status = active_domino.StatusType.HAND
+		last_placed_domino = null
+		current_play_state = PlayState.DRAGGING
+		_toggle_verification_ui(false)
+		active_domino.start_drag_from(get_global_mouse_position())
+		return
 	if current_play_state != PlayState.IDLE:
 		return
+	if last_placed_domino != null:  # ADD THIS — block new picks while verifying a placed domino
+		return
 	active_domino = domino
-	active_domino_origin = domino.global_position  # ADD THIS
+	active_domino_origin = domino.global_position
+	last_placed_slot = domino.get_parent()
 	current_play_state = PlayState.DRAGGING
 	domino.start_drag()
 
 func _input(event) -> void:
 	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT and not event.pressed:
+		print("Mouse release | state: ", current_play_state, " | active: ", active_domino)
 		if current_play_state == PlayState.DRAGGING and active_domino != null:
 			_try_place_active_domino()
 
 func _try_place_active_domino() -> void:
-	var grid_pos = board.world_to_grid(get_global_mouse_position())
+	var grid_pos = board.world_to_grid(active_domino.global_position + domino_snap_offset)
 	var gx = int(grid_pos.x)
 	var gy = int(grid_pos.y)
 	
@@ -84,16 +114,21 @@ func _try_place_active_domino() -> void:
 	
 	# Z-level
 	active_domino.z_index = gy  # Lower Y = further back
+	active_domino.stop_drag()  # ADD THIS — stops _process tracking mouse
+	active_domino.current_status = active_domino.StatusType.BOARD  # ADD THIS
 
-	# Lock it — removes shader, disables input
-	active_domino.lock_to_board()
-	
-	_sort_board_dominoes_by_y()
+	# Enter verification phase where we show the OK/UNDO buttons and wait for 
+	# player input before finalising the placement
+	last_placed_domino = active_domino
+	last_placed_origin = active_domino_origin
 	active_domino = null
-	current_play_state = PlayState.IDLE
+	current_play_state = PlayState.VERIFYING
 	_toggle_verification_ui(true)
 
+
 func _cancel_active_domino() -> void:
+
+	print("_cancel_active_domino called | active: ", active_domino)
 	if active_domino == null:
 		return
 	var domino = active_domino
@@ -122,6 +157,42 @@ func _sort_by_y(a, b) -> bool:
 func _toggle_verification_ui(show: bool) -> void:
 	ok_button.visible = show
 	undo_button.visible = show
+
+func _on_ok_pressed() -> void:
+	if last_placed_domino == null:
+		return
+	last_placed_domino.lock_to_board()
+	_sort_board_dominoes_by_y()
+	last_placed_domino = null
+	last_placed_origin = Vector2.ZERO
+	current_play_state = PlayState.IDLE
+	_toggle_verification_ui(false)
+
+func _on_undo_pressed() -> void:
+
+	print("_on_undo_pressed called")
+	if last_placed_domino == null:
+		return
+	board.remove_domino_from_matrix(last_placed_domino)
+	var board_parent = last_placed_domino.get_parent()
+	
+	# Capture global position BEFORE reparenting
+	var global_pos_before = last_placed_domino.global_position
+	
+	board_parent.remove_child(last_placed_domino)
+	last_placed_slot.add_child(last_placed_domino)
+	
+	# Convert to slot-local space so the tween starts from the right place
+	last_placed_domino.position = last_placed_slot.get_global_transform().affine_inverse().xform(global_pos_before)
+	
+	last_placed_domino.current_status = last_placed_domino.StatusType.HAND
+	last_placed_domino.input_pickable = true
+	last_placed_domino.return_to_hand(last_placed_origin)
+	last_placed_domino = null
+	last_placed_origin = Vector2.ZERO
+	last_placed_slot = null
+	current_play_state = PlayState.IDLE
+	_toggle_verification_ui(false)
 
 # ===================================================================================
 # Domino draw and stack management logic

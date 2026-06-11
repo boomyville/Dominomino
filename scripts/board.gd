@@ -26,6 +26,8 @@ func _generate_visual_grid_slots() -> void:
 	
 	if grid_container == null:
 		return
+
+	grid_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		
 	grid_container.set("custom_constants/hseparation", 0)
 	grid_container.set("custom_constants/vseparation", 0)
@@ -35,6 +37,7 @@ func _generate_visual_grid_slots() -> void:
 
 	for i in range(16 * 16):
 		var slot = TextureRect.new()
+		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot.rect_min_size = Vector2(24, 24) 
 		slot.expand = true
 		slot.stretch_mode = TextureRect.STRETCH_SCALE
@@ -62,6 +65,13 @@ func place_domino_on_matrix(domino_instance: Area2D, target_x: int, target_y: in
 	board_matrix[target_y][target_x] = domino_instance
 	board_matrix[target_y][target_x + 1] = domino_instance
 	print("Domino successfully registered at matrix row: ", target_y, " across columns: ", target_x, "-", target_x + 1)
+
+# We call this function when we undo a domino placement on the board
+func remove_domino_from_matrix(domino_instance: Area2D) -> void:
+	for y in range(16):
+		for x in range(16):
+			if board_matrix[y][x] == domino_instance:
+				board_matrix[y][x] = null
 
 func is_placement_valid(start_x: int, start_y: int) -> bool:
 	if start_x < 0 or start_y < 0:
