@@ -5,6 +5,7 @@ onready var board = $GridPosition/Board
 onready var hand = $PlayerHandPosition/PlayerHand 
 onready var ok_button = $UI/UIPosition/UIContainer/OKButton
 onready var undo_button = $UI/UIPosition/UIContainer/UndoButton
+onready var energy_label = $UI/EnergyPosition/Label
 
 # We can drop your template domino .tres files directly into this array via the inspector!
 export(Array, Resource) var player_stack = []
@@ -36,6 +37,8 @@ func _ready() -> void:
 	_toggle_verification_ui(false)
 	
 	GameState.connect("player_energy_changed", self, "_on_energy_adjusted")
+	GameState.set_starting_player_energy(10)  # ADD THIS — must be after signal connect
+	
 	_refresh_hand_playability()
 
 	# Calculate domino snap offset from actual sprite dimensions
@@ -161,6 +164,10 @@ func _toggle_verification_ui(show: bool) -> void:
 func _on_ok_pressed() -> void:
 	if last_placed_domino == null:
 		return
+	# Deduct energy for the pips played
+	var cost = GameState.calculate_domino_cost(last_placed_domino.left_pip_value, last_placed_domino.right_pip_value)
+	GameState.spend_player_energy(cost)
+	
 	last_placed_domino.lock_to_board()
 	_sort_board_dominoes_by_y()
 	last_placed_domino = null
@@ -246,6 +253,8 @@ func _player_draw_pile_empty() -> void:
 	return;
 
 func _on_energy_adjusted(new_energy: int) -> void:
+
+	energy_label.text = str(new_energy)
 	_refresh_hand_playability()
 
 func _refresh_hand_playability() -> void:

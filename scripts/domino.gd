@@ -187,7 +187,11 @@ func _ready() -> void:
 func _input_event(_viewport, event, _shape_idx) -> void:
 	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT and event.pressed:
 		if drag_state == DragState.IDLE and (current_status == StatusType.HAND or current_status == StatusType.BOARD):
-			emit_signal("domino_clicked", self) 
+			# Block if can't afford
+			var cost = GameState.calculate_domino_cost(left_pip_value, right_pip_value)
+			if GameState.current_player_energy < cost:
+				return
+			emit_signal("domino_clicked", self)
 
 func start_drag() -> void:
 	drag_state = DragState.CLICKED

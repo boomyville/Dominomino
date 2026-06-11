@@ -42,3 +42,11 @@ margin_left = 35.0
 margin_right = 81.0
 margin_bottom = 40.0
 text = "Undo"
+
+[node name="EnergyPosition" type="Position2D" parent="UI"]
+position = Vector2( 72, 48 )
+
+[node name="Label" type="Label" parent="UI/EnergyPosition"]
+margin_right = 40.0
+margin_bottom = 14.0
+text = "0"
