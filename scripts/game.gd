@@ -37,7 +37,7 @@ func _ready() -> void:
 	_toggle_verification_ui(false)
 	
 	GameState.connect("player_energy_changed", self, "_on_energy_adjusted")
-	GameState.set_starting_player_energy(10)  # ADD THIS — must be after signal connect
+	GameState.set_starting_player_energy(20)  # ADD THIS — must be after signal connect
 	
 	_refresh_hand_playability()
 
@@ -50,7 +50,8 @@ func _ready() -> void:
 	var sprite = temp.get_node_or_null("BaseSprite")
 	if sprite and sprite.texture:
 		var size = sprite.texture.get_size() * sprite.scale
-		domino_snap_offset = Vector2(size.x * 0.25, size.y * 0.5)
+		#domino_snap_offset = Vector2(size.x * 0.25, size.y * 0.5)
+		domino_snap_offset = Vector2(0, 0)  # ADJUST THIS if your domino sprite isn't perfectly centered on its grid slot
 	temp.free()
 
 func _process(_delta) -> void:
@@ -58,8 +59,9 @@ func _process(_delta) -> void:
 		var grid_pos = board.world_to_grid(active_domino.global_position + domino_snap_offset)
 		var gx = int(grid_pos.x)
 		var gy = int(grid_pos.y)
-		if board.is_placement_valid(gx, gy):
-			board.highlight_preview(gx, gy)
+		var vertical = active_domino.is_vertical()
+		if board.is_placement_valid(gx, gy, vertical):
+			board.highlight_preview(gx, gy, vertical)
 		else:
 			board.clear_preview()
 
@@ -87,41 +89,46 @@ func _on_domino_clicked(domino) -> void:
 
 func _input(event) -> void:
 	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT and not event.pressed:
-		print("Mouse release | state: ", current_play_state, " | active: ", active_domino)
 		if current_play_state == PlayState.DRAGGING and active_domino != null:
 			_try_place_active_domino()
 
+	# Only handle right-click here when actively dragging — 
+	# in-hand right-click is handled by the domino's own _input_event
+	if event is InputEventMouseButton and event.button_index == BUTTON_RIGHT and event.pressed:
+		if current_play_state == PlayState.DRAGGING and active_domino != null:
+			active_domino.rotate_domino()
+
 func _try_place_active_domino() -> void:
-	var grid_pos = board.world_to_grid(active_domino.global_position + domino_snap_offset)
+	var snap = domino_snap_offset
+	if active_domino.is_vertical():
+		snap = Vector2(domino_snap_offset.y, domino_snap_offset.x)
+	var grid_pos = board.world_to_grid(active_domino.global_position + snap)
 	var gx = int(grid_pos.x)
 	var gy = int(grid_pos.y)
-	
-	if not board.is_placement_valid(gx, gy):
+	var vertical = active_domino.is_vertical()
+
+	if not board.is_placement_valid(gx, gy, vertical):
 		board.clear_preview()
 		_cancel_active_domino()
 		return
-	
+
 	board.clear_preview()
-	
-	# Remove the domino from its hand slot first
 	var old_parent = active_domino.get_parent()
 	old_parent.remove_child(active_domino)
 	board.add_child(active_domino)
 
-	# NOW set position AFTER reparenting so it's in board's coordinate space
 	var snap_world = board.grid_to_world(gx, gy)
-	active_domino.global_position = snap_world + Vector2(0, -2)  
-	
-	# Register in matrix
-	board.place_domino_on_matrix(active_domino, gx, gy)
-	
-	# Z-level
-	active_domino.z_index = gy  # Lower Y = further back
-	active_domino.stop_drag()  # ADD THIS — stops _process tracking mouse
-	active_domino.current_status = active_domino.StatusType.BOARD  # ADD THIS
+	match active_domino.rotation_step:
+		0: active_domino.global_position = snap_world + Vector2(24, 10)
+		1: active_domino.global_position = snap_world + Vector2(12, 24)
+		2: active_domino.global_position = snap_world + Vector2(24, 10)  # same as 0, adjust if needed
+		3: active_domino.global_position = snap_world + Vector2(12, 24)
 
-	# Enter verification phase where we show the OK/UNDO buttons and wait for 
-	# player input before finalising the placement
+	board.place_domino_on_matrix(active_domino, gx, gy)
+	active_domino.z_index = gy
+	active_domino.stop_drag()
+	active_domino.current_status = active_domino.StatusType.BOARD
+
 	last_placed_domino = active_domino
 	last_placed_origin = active_domino_origin
 	active_domino = null

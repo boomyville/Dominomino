@@ -63,8 +63,13 @@ func get_domino_at(x: int, y: int) -> Area2D:
 
 func place_domino_on_matrix(domino_instance: Area2D, target_x: int, target_y: int) -> void:
 	board_matrix[target_y][target_x] = domino_instance
-	board_matrix[target_y][target_x + 1] = domino_instance
-	print("Domino successfully registered at matrix row: ", target_y, " across columns: ", target_x, "-", target_x + 1)
+	if domino_instance.is_vertical():
+		board_matrix[target_y + 1][target_x] = domino_instance
+		print("Domino registered at col: ", target_x, " rows: ", target_y, "-", target_y + 1)
+	else:
+		board_matrix[target_y][target_x + 1] = domino_instance
+		print("Domino registered at row: ", target_y, " cols: ", target_x, "-", target_x + 1)
+
 
 # We call this function when we undo a domino placement on the board
 func remove_domino_from_matrix(domino_instance: Area2D) -> void:
@@ -73,27 +78,35 @@ func remove_domino_from_matrix(domino_instance: Area2D) -> void:
 			if board_matrix[y][x] == domino_instance:
 				board_matrix[y][x] = null
 
-func is_placement_valid(start_x: int, start_y: int) -> bool:
+
+func is_placement_valid(start_x: int, start_y: int, vertical: bool = false) -> bool:
 	if start_x < 0 or start_y < 0:
 		return false
-	if start_x + 1 >= 16 or start_y >= 16:
-		return false
-	var left_cell = board_matrix[start_y][start_x]
-	var right_cell = board_matrix[start_y][start_x + 1]
-	if left_cell != null or right_cell != null:
-		return false
-	return true
+	if vertical:
+		if start_x >= 16 or start_y + 1 >= 16:
+			return false
+		return board_matrix[start_y][start_x] == null and board_matrix[start_y + 1][start_x] == null
+	else:
+		if start_x + 1 >= 16 or start_y >= 16:
+			return false
+		return board_matrix[start_y][start_x] == null and board_matrix[start_y][start_x + 1] == null
 
-func highlight_preview(start_x: int, start_y: int) -> void:
+
+func highlight_preview(start_x: int, start_y: int, vertical: bool = false) -> void:
 	clear_preview()
-	if not is_placement_valid(start_x, start_y):
+	if not is_placement_valid(start_x, start_y, vertical):
 		return
 	for child in grid_container.get_children():
 		var gp = child.get_meta("grid_pos")
-		if (gp.x == start_x or gp.x == start_x + 1) and gp.y == start_y:
+		var highlight = false
+		if vertical:
+			highlight = gp.x == start_x and (gp.y == start_y or gp.y == start_y + 1)
+		else:
+			highlight = gp.y == start_y and (gp.x == start_x or gp.x == start_x + 1)
+		if highlight:
 			child.texture = load("res://assets/ui/empty_board_tile3.png")
 			previewed_slots.append(child)
-
+			
 func clear_preview() -> void:
 	for slot in previewed_slots:
 		if is_instance_valid(slot):

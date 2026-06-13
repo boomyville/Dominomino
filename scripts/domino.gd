@@ -21,11 +21,13 @@ var current_status: int = StatusType.VOID
 var upgrade_level: int = 1
 var drag_state: int = DragState.IDLE
 var drag_offset: Vector2 = Vector2.ZERO
+var rotation_step: int = 0  # 0=horizontal, 1=vertical CW, 2=flipped, 3=vertical CCW
 
 # Node references
 onready var base_sprite = $BaseSprite
 onready var left_pip_sprite = $LeftPip/PipSprite
 onready var right_pip_sprite = $RightPip/PipSprite
+onready var lip_sprite = $LipPosition/LipSprite
 
 # Shaders
 const OUTLINE_SHADER = preload("res://assets/shaders/playable_outline.shader") 
@@ -185,9 +187,12 @@ func _ready() -> void:
 	check_playability()
 
 func _input_event(_viewport, event, _shape_idx) -> void:
+	if event is InputEventMouseButton and event.button_index == BUTTON_RIGHT and event.pressed:
+		if current_status == StatusType.HAND and drag_state == DragState.IDLE:
+			rotate_domino()
+	
 	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT and event.pressed:
 		if drag_state == DragState.IDLE and (current_status == StatusType.HAND or current_status == StatusType.BOARD):
-			# Block if can't afford
 			var cost = GameState.calculate_domino_cost(left_pip_value, right_pip_value)
 			if GameState.current_player_energy < cost:
 				return
@@ -243,3 +248,62 @@ func return_to_hand(origin: Vector2) -> void:
 	
 	tween.start()
 	tween.connect("tween_all_completed", tween, "queue_free")
+
+func rotate_domino() -> void:
+	rotation_step = (rotation_step + 1) % 4
+	rotation_degrees = rotation_step * 90.0
+
+	# Counter-rotate the lip so it always stays upright
+	lip_sprite.rotation_degrees = -rotation_degrees
+
+	
+	# Swap lip texture based on orientation
+	if is_vertical():
+		lip_sprite.texture = load("res://assets/domino/lip_narrow.png")
+	else:
+		lip_sprite.texture = load("res://assets/domino/lip_wide.png")
+	
+	# Reposition lip to always sit at the bottom of the current bounding box
+	match rotation_step:
+		0: lip_sprite.position = Vector2(24, 12)
+		1: lip_sprite.position = Vector2(51, -3)
+		2: lip_sprite.position = Vector2(24, -18)
+		3: lip_sprite.position = Vector2(-2, -3)
+
+func get_top_pip() -> int:
+	match rotation_step:
+		1: return left_pip_value
+		3: return right_pip_value
+	return -1  # horizontal orientations have no top pip
+
+func get_bottom_pip() -> int:
+	match rotation_step:
+		1: return right_pip_value
+		3: return left_pip_value
+	return -1
+
+func get_left_pip() -> int:
+	match rotation_step:
+		0: return left_pip_value
+		2: return right_pip_value
+	return -1
+
+func get_right_pip() -> int:
+	match rotation_step:
+		0: return right_pip_value
+		2: return left_pip_value
+	return -1
+
+func is_horizontal() -> bool:
+	return rotation_step % 2 == 0
+
+func is_vertical() -> bool:
+	return rotation_step % 2 == 1
+
+func get_facing_pip(direction: String) -> int:
+	match direction:
+		"top": return get_top_pip()
+		"bottom": return get_bottom_pip()
+		"left": return get_left_pip()
+		"right": return get_right_pip()
+	return -1
