@@ -169,6 +169,14 @@ func check_playability() -> void:
 	else:
 		print("WARNING: check_playability called but shader_material is target uniform null.")
 
+	if lip_sprite and lip_sprite.material:
+		# Explicitly cast generic Material to ShaderMaterial so we can use set_shader_param()
+		var active_material = lip_sprite.material as ShaderMaterial
+		if active_material:
+			active_material.set_shader_param("is_active", can_afford)
+	else:
+		print("WARNING: check_playability called but shader_material is target uniform null.")
+
 func _ready() -> void:
 	input_pickable = true
 	print("Domino _ready | input_pickable: ", input_pickable, " | monitoring: ", monitoring)
@@ -177,7 +185,11 @@ func _ready() -> void:
 		shader_material = ShaderMaterial.new()
 		shader_material.shader = OUTLINE_SHADER
 		base_sprite.material = shader_material
-		print("Created and assigned fresh ShaderMaterial to base_sprite.")
+	
+	if lip_sprite:
+		var lip_shader_material = ShaderMaterial.new()
+		lip_shader_material.shader = OUTLINE_SHADER
+		lip_sprite.material = lip_shader_material
 		
 	if domino_data != null:
 		left_pip_value = domino_data.base_left_pip
@@ -222,6 +234,8 @@ func lock_to_board() -> void:
 	current_status = StatusType.BOARD
 	if base_sprite:
 		base_sprite.material = null
+	if lip_sprite:
+		lip_sprite.material = null
 	input_pickable = false
 	z_as_relative = false
 
@@ -253,9 +267,11 @@ func rotate_domino() -> void:
 	rotation_step = (rotation_step + 1) % 4
 	rotation_degrees = rotation_step * 90.0
 
+	if base_sprite:
+		base_sprite.texture = load("res://assets/domino/domino_base_" + str(rotation_step) + ".png")
+
 	# Counter-rotate the lip so it always stays upright
 	lip_sprite.rotation_degrees = -rotation_degrees
-
 	
 	# Swap lip texture based on orientation
 	if is_vertical():

@@ -119,10 +119,10 @@ func _try_place_active_domino() -> void:
 
 	var snap_world = board.grid_to_world(gx, gy)
 	match active_domino.rotation_step:
-		0: active_domino.global_position = snap_world + Vector2(24, 10)
-		1: active_domino.global_position = snap_world + Vector2(12, 24)
-		2: active_domino.global_position = snap_world + Vector2(24, 10)  # same as 0, adjust if needed
-		3: active_domino.global_position = snap_world + Vector2(12, 24)
+		0: active_domino.global_position = snap_world + Vector2(24, 7)
+		1: active_domino.global_position = snap_world + Vector2(12, 19)
+		2: active_domino.global_position = snap_world + Vector2(12, 7)  # Normally this is 12 but we take 5 off due to the thickness of the domino
+		3: active_domino.global_position = snap_world + Vector2(12, 19)
 
 	board.place_domino_on_matrix(active_domino, gx, gy)
 	active_domino.z_index = gy
@@ -137,7 +137,6 @@ func _try_place_active_domino() -> void:
 
 
 func _cancel_active_domino() -> void:
-
 	print("_cancel_active_domino called | active: ", active_domino)
 	if active_domino == null:
 		return
@@ -146,7 +145,16 @@ func _cancel_active_domino() -> void:
 	active_domino = null
 	current_play_state = PlayState.IDLE
 	board.clear_preview()
-	domino.return_to_hand(origin)  # domino handles its own tween
+
+	# If the domino has been reparented to the board, move it back to its hand slot
+	var current_parent = domino.get_parent()
+	if current_parent != last_placed_slot and last_placed_slot != null:
+		var global_pos_before = domino.global_position
+		current_parent.remove_child(domino)
+		last_placed_slot.add_child(domino)
+		domino.position = last_placed_slot.get_global_transform().affine_inverse().xform(global_pos_before)
+
+	domino.return_to_hand(origin)
 
 func _sort_board_dominoes_by_y() -> void:
 	var dominoes = []
