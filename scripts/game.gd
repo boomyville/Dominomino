@@ -67,6 +67,7 @@ func _process(_delta) -> void:
 
 func _on_domino_clicked(domino) -> void:
 	print("_on_domino_clicked | state: ", current_play_state, " | domino: ", domino, " | last_placed: ", last_placed_domino)
+	
 	if current_play_state == PlayState.VERIFYING and domino == last_placed_domino:
 		board.remove_domino_from_matrix(last_placed_domino)
 		active_domino = last_placed_domino
@@ -77,23 +78,46 @@ func _on_domino_clicked(domino) -> void:
 		_toggle_verification_ui(false)
 		active_domino.start_drag_from(get_global_mouse_position())
 		return
+	
+	if last_placed_domino != null:
+		return
+	
+	# CLICK-TO-SELECT MODE: second click on the SAME dragging domino places it
+	if not Settings.mouse_mode_enabled and current_play_state == PlayState.DRAGGING and active_domino == domino:
+		_try_place_active_domino()
+		return
+	
 	if current_play_state != PlayState.IDLE:
 		return
-	if last_placed_domino != null:  # ADD THIS — block new picks while verifying a placed domino
-		return
+	
 	active_domino = domino
 	active_domino_origin = domino.global_position
 	last_placed_slot = domino.get_parent()
 	current_play_state = PlayState.DRAGGING
-	domino.start_drag()
+	
+	if Settings.mouse_mode_enabled:
+		domino.start_drag()
+	else:
+		domino.start_drag_from(get_global_mouse_position())
 
 func _input(event) -> void:
+	if not Settings.mouse_mode_enabled:
+		if event is InputEventMouseButton and event.button_index == BUTTON_LEFT and event.pressed:
+			if current_play_state == PlayState.DRAGGING and active_domino != null:
+				_try_place_active_domino()
+				get_tree().set_input_as_handled()
+				return
+		if event is InputEventMouseButton and event.button_index == BUTTON_RIGHT and event.pressed:
+			if current_play_state == PlayState.DRAGGING and active_domino != null:
+				active_domino.rotate_domino()
+				get_tree().set_input_as_handled()
+				return
+		return
+		
 	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT and not event.pressed:
 		if current_play_state == PlayState.DRAGGING and active_domino != null:
 			_try_place_active_domino()
 
-	# Only handle right-click here when actively dragging — 
-	# in-hand right-click is handled by the domino's own _input_event
 	if event is InputEventMouseButton and event.button_index == BUTTON_RIGHT and event.pressed:
 		if current_play_state == PlayState.DRAGGING and active_domino != null:
 			active_domino.rotate_domino()

@@ -18,7 +18,7 @@ __meta__ = {
 }
 
 [node name="PlayerHandPosition" type="Position2D" parent="."]
-position = Vector2( 72, 468 )
+position = Vector2( 72, 492 )
 
 [node name="PlayerHand" parent="PlayerHandPosition" instance=ExtResource( 3 )]
 mouse_filter = 2
@@ -42,6 +42,13 @@ margin_left = 35.0
 margin_right = 81.0
 margin_bottom = 40.0
 text = "Undo"
+
+[node name="Rotate" type="Button" parent="UI/UIPosition/UIContainer"]
+visible = false
+margin_left = 85.0
+margin_right = 138.0
+margin_bottom = 40.0
+text = "Rotate"
 
 [node name="EnergyPosition" type="Position2D" parent="UI"]
 position = Vector2( 72, 48 )
