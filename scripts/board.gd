@@ -1,4 +1,3 @@
-# board.gd
 tool
 extends Control
 
@@ -7,10 +6,13 @@ var previewed_slots: Array = []
 onready var grid_container = $GridContainer
 
 var board_matrix = []
+var cached_grid_origin: Vector2 = Vector2.ZERO
 
 func _ready() -> void:
 	_initialise_empty_matrix()
 	_generate_visual_grid_slots()
+	cached_grid_origin = grid_container.get_global_transform_with_canvas().origin
+	print("Cached grid origin: ", cached_grid_origin)
 
 func _initialise_empty_matrix() -> void:
 	board_matrix = [] # Reset array
@@ -119,10 +121,10 @@ func clear_preview() -> void:
 	previewed_slots.clear()
 
 func world_to_grid(world_pos: Vector2) -> Vector2:
-	var origin = grid_container.get_global_transform_with_canvas().origin
-	var local_pos = world_pos - origin
+	var local_pos = world_pos - cached_grid_origin
 	return Vector2(int(local_pos.x / 24), int(local_pos.y / 24))
 
 func grid_to_world(cell_x: int, cell_y: int) -> Vector2:
-	var origin = grid_container.get_global_transform_with_canvas().origin
-	return origin + Vector2(cell_x * 24, cell_y * 24)
+	print("Converting grid to world | cell: (", cell_x, ", ", cell_y, ") | cached origin: ", cached_grid_origin)
+	print("Calculated world position: ", cached_grid_origin + Vector2(cell_x * 24, cell_y * 24))
+	return cached_grid_origin + Vector2(cell_x * 24, cell_y * 24)

@@ -43,8 +43,7 @@ margin_right = 81.0
 margin_bottom = 40.0
 text = "Undo"
 
-[node name="Rotate" type="Button" parent="UI/UIPosition/UIContainer"]
-visible = false
+[node name="RotateButton" type="Button" parent="UI/UIPosition/UIContainer"]
 margin_left = 85.0
 margin_right = 138.0
 margin_bottom = 40.0
@@ -57,3 +56,14 @@ position = Vector2( 72, 48 )
 margin_right = 40.0
 margin_bottom = 14.0
 text = "0"
+
+[node name="SettingsPosition" type="Position2D" parent="UI"]
+position = Vector2( 885, 509 )
+
+[node name="SettingsButton" type="Button" parent="UI/SettingsPosition"]
+margin_right = 63.0
+margin_bottom = 20.0
+text = "Settings"
+
+[node name="DragLayer" type="CanvasLayer" parent="."]
+layer = 2

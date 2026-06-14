@@ -323,3 +323,11 @@ func get_facing_pip(direction: String) -> int:
 		"left": return get_left_pip()
 		"right": return get_right_pip()
 	return -1
+
+func get_placement_offset() -> Vector2:
+	match rotation_step:
+		0: return Vector2(24, 7)
+		1: return Vector2(12, 19)
+		2: return Vector2(24, 7)
+		3: return Vector2(12, 19)
+	return Vector2.ZERO
