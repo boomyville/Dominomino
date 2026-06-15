@@ -255,7 +255,7 @@ func return_to_hand(origin: Vector2) -> void:
 		"position", 
 		position, 
 		Vector2.ZERO, 
-		0.25, # 1.0 second is a bit slow for a card snap back; 0.25s feels snappier!
+		Settings.domino_tween_duration, 
 		Tween.TRANS_CUBIC, 
 		Tween.EASE_OUT
 	)

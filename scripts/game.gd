@@ -14,7 +14,7 @@ const SETTINGS_POPUP_SCENE = preload("res://scenes/settings.tscn")
 # We can drop your template domino .tres files directly into this array via the inspector!
 export(Array, Resource) var player_stack = []
 
-enum PlayState { IDLE, DRAGGING, VERIFYING, PROCESSING }
+enum PlayState { IDLE, DRAGGING, VERIFYING, PROCESSING, REPOSITIONING }
 
 var player_draw_pile: Array = []
 var player_discard_pile: Array = []
@@ -79,6 +79,11 @@ func _process(_delta) -> void:
 func _on_domino_clicked(domino) -> void:
 	print("_on_domino_clicked | state: ", current_play_state, " | domino: ", domino, " | last_placed: ", last_placed_domino)
 	
+	# NEW GUARD: If the hand container is currently shifting tiles, 
+	# ignore clicks to prevent coordinate corruption!
+	if hand.is_shuffling:
+		return
+		
 	# 1. Handle picking up a domino that is already on the board awaiting verification
 	if current_play_state == PlayState.VERIFYING and domino == last_placed_domino:
 		board.remove_domino_from_matrix(last_placed_domino)
@@ -167,10 +172,10 @@ func _input(event) -> void:
 
 func _try_place_active_domino() -> void:
 	print("Call try_place_active_domino at:", OS.get_ticks_msec())
+	
 	# Convert global_position back to "logical" anchor by removing the visual offset
 	# that placement applies, based on the domino's CURRENT rotation
 	var visual_offset = active_domino.get_placement_offset()
-	
 	var logical_pos = active_domino.global_position - visual_offset
 	var grid_pos = board.world_to_grid(logical_pos)
 	var gx = int(grid_pos.x)
@@ -187,7 +192,10 @@ func _try_place_active_domino() -> void:
 	old_parent.remove_child(active_domino)
 	board.add_child(active_domino)
 
+	# 1. Get world snap position once (No duplicate var declaration)
 	var snap_world = board.grid_to_world(gx, gy)
+	
+	# 2. Assign the visual snap position incorporating rotation offset
 	active_domino.global_position = snap_world + visual_offset
 	print("Active domino global pos: ", active_domino.global_position, " | Rotation: ", active_domino.rotation_step, " | Snap world pos: ", snap_world, " | Visual offset: ", visual_offset)
 
@@ -199,16 +207,18 @@ func _try_place_active_domino() -> void:
 	last_placed_domino = active_domino
 	last_placed_origin = active_domino_origin
 	active_domino = null
+	
+	# 1. Trigger the hand repositioning (It will handle its own timing now!)
+	hand.clean_and_reposition_hand()
+	
+	# 2. INSTANT UNLOCK: Set the state immediately so buttons are active right away
 	if Settings.fast_mode_enabled:
 		_on_ok_pressed()
 	else:
 		current_play_state = PlayState.VERIFYING
 		_toggle_verification_ui(true)
 
-
 func _cancel_active_domino() -> void:
-	
-	print("Call _cancel_active_domino at:", OS.get_ticks_msec())
 	print("_cancel_active_domino called | active: ", active_domino)
 	if active_domino == null:
 		return
@@ -217,14 +227,30 @@ func _cancel_active_domino() -> void:
 	active_domino = null
 	current_play_state = PlayState.IDLE
 	board.clear_preview()
+
+	# Hide the rotate button since we are back to IDLE
 	_toggle_verification_ui(false)
 
+	# 1. Grab the current parent safely
 	var current_parent = domino.get_parent()
 
-	if current_parent != last_placed_slot and last_placed_slot != null:
+	# 2. Check if it's currently floating inside the DragLayer
+	if current_parent == $DragLayer:
 		var global_pos_before = domino.global_position
-		current_parent.remove_child(domino)
+		$DragLayer.remove_child(domino)
+		
+		# --- LIFECYCLE FIX GATEWAY ---
+		# If the original hand slot wrapper was queue_freed during repositioning,
+		# regenerate a fresh container slot control right now so the domino has a home!
+		if not is_instance_valid(last_placed_slot) or last_placed_slot.get_parent() == null:
+			last_placed_slot = Control.new()
+			last_placed_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			last_placed_slot.rect_min_size = Vector2(48, 28) # Use your hand layout's target slot sizes
+			hand.add_child(last_placed_slot)
+		# -----------------------------
+
 		last_placed_slot.add_child(domino)
+		# Convert coordinates back to slot space safely
 		domino.position = last_placed_slot.get_global_transform().affine_inverse().xform(global_pos_before)
 
 	domino.return_to_hand(origin)
@@ -261,7 +287,6 @@ func _toggle_verification_ui(show_verification: bool) -> void:
 func _on_ok_pressed() -> void:
 	if last_placed_domino == null:
 		return
-	# Deduct energy for the pips played
 	var cost = GameState.calculate_domino_cost(last_placed_domino.left_pip_value, last_placed_domino.right_pip_value)
 	GameState.spend_player_energy(cost)
 	
@@ -269,34 +294,49 @@ func _on_ok_pressed() -> void:
 	_sort_board_dominoes_by_y()
 	last_placed_domino = null
 	last_placed_origin = Vector2.ZERO
-	current_play_state = PlayState.IDLE
+	
+	# FIX: Only flip back to IDLE if we aren't currently waiting on a hand layout slide
+	if current_play_state != PlayState.REPOSITIONING:
+		current_play_state = PlayState.IDLE
+		
 	_toggle_verification_ui(false)
 
 func _on_undo_pressed() -> void:
-
 	print("_on_undo_pressed called")
 	if last_placed_domino == null:
 		return
+		
 	board.remove_domino_from_matrix(last_placed_domino)
 	var board_parent = last_placed_domino.get_parent()
-	
-	# Capture global position BEFORE reparenting
 	var global_pos_before = last_placed_domino.global_position
-	
 	board_parent.remove_child(last_placed_domino)
-	last_placed_slot.add_child(last_placed_domino)
 	
-	# Convert to slot-local space so the tween starts from the right place
+	# If the original hand slot wrapper was deleted during a previous drop, rebuild it!
+	if not is_instance_valid(last_placed_slot) or last_placed_slot.get_parent() == null:
+		last_placed_slot = Control.new()
+		last_placed_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		last_placed_slot.rect_min_size = Vector2(48, 28)
+		hand.add_child(last_placed_slot)
+	
+	last_placed_slot.add_child(last_placed_domino)
 	last_placed_domino.position = last_placed_slot.get_global_transform().affine_inverse().xform(global_pos_before)
 	
 	last_placed_domino.current_status = last_placed_domino.StatusType.HAND
 	last_placed_domino.input_pickable = true
+	
+	# Run the native return animation back to its hand coordinates
 	last_placed_domino.return_to_hand(last_placed_origin)
+	
 	last_placed_domino = null
 	last_placed_origin = Vector2.ZERO
 	last_placed_slot = null
 	current_play_state = PlayState.IDLE
 	_toggle_verification_ui(false)
+
+	# NEW FIX: Call the slide reorganization routine here!
+	# This forces the hand to smoothly evaluate its boxes and glide them 
+	# out to accommodate the returned domino over your user-defined duration.
+	hand.clean_and_reposition_hand()
 
 func _on_rotate_pressed() -> void:
 	# Only allow button rotation if a domino is actively floating/dragging

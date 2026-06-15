@@ -1,6 +1,7 @@
 extends GridContainer
 # Preload your physical domino shell scene
 const DOMINO_SCENE = preload("res://scenes/domino.tscn")
+var is_shuffling: bool = false
 
 func add_domino_to_hand(data: DominoData) -> void:
 	# 1. Create a lightweight, empty structural UI slot box
@@ -27,3 +28,36 @@ func add_domino_to_hand(data: DominoData) -> void:
 	var game_node = get_tree().current_scene
 	print("Connecting domino_clicked to: ", game_node.name)
 	new_domino.connect("domino_clicked", game_node, "_on_domino_clicked")
+
+func clean_and_reposition_hand() -> void:
+	is_shuffling = true
+
+	for slot in get_children():
+		if slot.get_child_count() == 0:
+			slot.queue_free()
+			remove_child(slot)
+
+	yield(get_tree(), "idle_frame")
+
+	var longest_tween: Tween = null
+
+	for slot in get_children():
+		if slot.get_child_count() > 0:
+			var domino = slot.get_child(0)
+			if domino.position != Vector2.ZERO:
+				var tween = Tween.new()
+				domino.add_child(tween)
+				tween.interpolate_property(
+					domino, "position",
+					domino.position, Vector2.ZERO,
+					Settings.domino_tween_duration,
+					Tween.TRANS_CUBIC, Tween.EASE_OUT
+				)
+				tween.start()
+				tween.connect("tween_completed", tween, "queue_free")
+				longest_tween = tween
+
+	if longest_tween != null:
+		yield(get_tree().create_timer(Settings.domino_tween_duration), "timeout")
+
+	is_shuffling = false
