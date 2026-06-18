@@ -8,6 +8,12 @@ onready var grid_container = $GridContainer
 var board_matrix = []
 var cached_grid_origin: Vector2 = Vector2.ZERO
 
+const TILE_A = preload("res://assets/ui/empty_board_tile.png")
+const TILE_B = preload("res://assets/ui/empty_board_tile2.png")
+const TILE_PREVIEW = preload("res://assets/ui/empty_board_tile3.png")
+
+export var grid_size = 10
+
 func _ready() -> void:
 	_initialise_empty_matrix()
 	_generate_visual_grid_slots()
@@ -16,9 +22,9 @@ func _ready() -> void:
 
 func _initialise_empty_matrix() -> void:
 	board_matrix = [] # Reset array
-	for _y in range(16):
+	for _y in range(grid_size):
 		var row = []
-		for _x in range(16):
+		for _x in range(grid_size):
 			row.append(null)
 		board_matrix.append(row)
 
@@ -26,9 +32,7 @@ func _generate_visual_grid_slots() -> void:
 	if grid_container == null:
 		grid_container = get_node_or_null("GridContainer")
 	
-	if grid_container == null:
-		return
-
+	grid_container.columns = grid_size
 	grid_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		
 	grid_container.set("custom_constants/hseparation", 0)
@@ -37,33 +41,36 @@ func _generate_visual_grid_slots() -> void:
 	for child in grid_container.get_children():
 		child.queue_free()
 
-	for i in range(16 * 16):
+	for i in range(grid_size * grid_size):
 		var slot = TextureRect.new()
 		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot.rect_min_size = Vector2(24, 24) 
 		slot.expand = true
 		slot.stretch_mode = TextureRect.STRETCH_SCALE
 		
-		var slot_x = i % 16
-		var slot_y = int(i / 16.0)
+		var slot_x = i % grid_size
+		var slot_y = int(i / grid_size)
 		slot.set_meta("grid_pos", Vector2(slot_x, slot_y))
 		
 		var check_val = (slot_x + slot_y) % 2
 		# print("Slot: ", slot_x, ",", slot_y, " Modulo result: ", check_val)
 		
 		if check_val == 0:
-			slot.texture = load("res://assets/ui/empty_board_tile.png") 
+			slot.texture = TILE_A
 		else:
-			slot.texture = load("res://assets/ui/empty_board_tile2.png")
+			slot.texture = TILE_B
 			
 		grid_container.add_child(slot)
 		
 func get_domino_at(x: int, y: int) -> Area2D:
-	if x >= 0 and x < 16 and y >= 0 and y < 16:
+	if x >= 0 and x < grid_size and y >= 0 and y < grid_size:
 		return board_matrix[y][x] as Area2D
 	return null
 
 func place_domino_on_matrix(domino_instance: Area2D, target_x: int, target_y: int) -> void:
+	# Don't do anything for invalid placements
+	if not is_placement_valid(target_x, target_y, domino_instance.is_vertical()):
+		return
 	board_matrix[target_y][target_x] = domino_instance
 	if domino_instance.is_vertical():
 		board_matrix[target_y + 1][target_x] = domino_instance
@@ -75,8 +82,8 @@ func place_domino_on_matrix(domino_instance: Area2D, target_x: int, target_y: in
 
 # We call this function when we undo a domino placement on the board
 func remove_domino_from_matrix(domino_instance: Area2D) -> void:
-	for y in range(16):
-		for x in range(16):
+	for y in range(grid_size):
+		for x in range(grid_size):
 			if board_matrix[y][x] == domino_instance:
 				board_matrix[y][x] = null
 
@@ -85,11 +92,11 @@ func is_placement_valid(start_x: int, start_y: int, vertical: bool = false) -> b
 	if start_x < 0 or start_y < 0:
 		return false
 	if vertical:
-		if start_x >= 16 or start_y + 1 >= 16:
+		if start_x >= grid_size or start_y + 1 >= grid_size:
 			return false
 		return board_matrix[start_y][start_x] == null and board_matrix[start_y + 1][start_x] == null
 	else:
-		if start_x + 1 >= 16 or start_y >= 16:
+		if start_x + 1 >= grid_size or start_y >= grid_size:
 			return false
 		return board_matrix[start_y][start_x] == null and board_matrix[start_y][start_x + 1] == null
 
@@ -106,7 +113,7 @@ func highlight_preview(start_x: int, start_y: int, vertical: bool = false) -> vo
 		else:
 			highlight = gp.y == start_y and (gp.x == start_x or gp.x == start_x + 1)
 		if highlight:
-			child.texture = load("res://assets/ui/empty_board_tile3.png")
+			child.texture = TILE_PREVIEW
 			previewed_slots.append(child)
 			
 func clear_preview() -> void:
@@ -115,9 +122,9 @@ func clear_preview() -> void:
 			var gp = slot.get_meta("grid_pos")
 			var check_val = (int(gp.x) + int(gp.y)) % 2
 			if check_val == 0:
-				slot.texture = load("res://assets/ui/empty_board_tile.png")
+				slot.texture = TILE_A
 			else:
-				slot.texture = load("res://assets/ui/empty_board_tile2.png")
+				slot.texture = TILE_B
 	previewed_slots.clear()
 
 func world_to_grid(world_pos: Vector2) -> Vector2:

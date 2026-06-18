@@ -1,4 +1,3 @@
-# game.gd
 extends Node2D
 
 onready var board = $GridPosition/Board
@@ -45,7 +44,7 @@ func _ready() -> void:
 	settings_button.connect("pressed", self, "_on_settings_pressed")
 
 	GameState.connect("player_energy_changed", self, "_on_energy_adjusted")
-	GameState.set_starting_player_energy(20)  # ADD THIS — must be after signal connect
+	GameState.set_starting_player_energy(12)  # ADD THIS — must be after signal connect
 	
 	_refresh_hand_playability()
 
@@ -122,6 +121,8 @@ func _on_domino_clicked(domino) -> void:
 	active_domino_origin = domino.global_position
 	last_placed_slot = domino.get_parent() 
 	current_play_state = PlayState.DRAGGING
+	active_domino.set_selected_visual(true)
+	_refresh_domino_selection_visuals()
 
 	# REPARENT SECOND: Now safe to remove since last_placed_slot is populated
 	var global_pos = domino.global_position
@@ -206,7 +207,14 @@ func _try_place_active_domino() -> void:
 
 	last_placed_domino = active_domino
 	last_placed_origin = active_domino_origin
+	var placed_domino = active_domino
+	placed_domino.set_selected_visual(false)
+
 	active_domino = null
+	# NOTE: Do NOT call _refresh_domino_selection_visuals() here.
+	# Placement is not yet a completed or cancelled move (still pending OK/Undo),
+	# so the in-hand green highlight should stay suppressed until _on_ok_pressed()
+	# or _on_undo_pressed() resolves the pending placement.
 	
 	# 1. Trigger the hand repositioning (It will handle its own timing now!)
 	hand.clean_and_reposition_hand()
@@ -224,6 +232,7 @@ func _cancel_active_domino() -> void:
 		return
 	var domino = active_domino
 	var origin = active_domino_origin
+	domino.set_selected_visual(false)
 	active_domino = null
 	current_play_state = PlayState.IDLE
 	board.clear_preview()
@@ -254,6 +263,12 @@ func _cancel_active_domino() -> void:
 		domino.position = last_placed_slot.get_global_transform().affine_inverse().xform(global_pos_before)
 
 	domino.return_to_hand(origin)
+
+	# IMPORTANT: refresh AFTER the domino is reparented back into a hand slot.
+	# _refresh_domino_selection_visuals() only loops over hand.get_children(),
+	# so calling it while the domino was still under $DragLayer meant this
+	# specific domino was skipped and never got check_playability() re-applied.
+	_refresh_domino_selection_visuals()
 
 func _sort_board_dominoes_by_y() -> void:
 	var dominoes = []
@@ -294,6 +309,9 @@ func _on_ok_pressed() -> void:
 	_sort_board_dominoes_by_y()
 	last_placed_domino = null
 	last_placed_origin = Vector2.ZERO
+
+	# Move is now fully completed: restore the in-hand green highlight.
+	_refresh_domino_selection_visuals()
 	
 	# FIX: Only flip back to IDLE if we aren't currently waiting on a hand layout slide
 	if current_play_state != PlayState.REPOSITIONING:
@@ -332,6 +350,11 @@ func _on_undo_pressed() -> void:
 	last_placed_slot = null
 	current_play_state = PlayState.IDLE
 	_toggle_verification_ui(false)
+
+	# Move is now cancelled: restore the in-hand green highlight.
+	# (Moved to AFTER active_domino/last_placed_domino are cleared so the
+	# refresh sees a clean state and doesn't accidentally suppress dominoes.)
+	_refresh_domino_selection_visuals()
 
 	# NEW FIX: Call the slide reorganization routine here!
 	# This forces the hand to smoothly evaluate its boxes and glide them 
@@ -419,3 +442,23 @@ func _on_settings_pressed() -> void:
 	
 	# 4. Tell the PopupPanel to center itself on screen and show up!
 	popup_instance.popup_centered()
+
+func _refresh_domino_selection_visuals() -> void:
+	for slot in hand.get_children():
+		if slot.get_child_count() == 0:
+			continue
+
+		var domino = slot.get_child(0)
+
+		if domino == active_domino:
+			domino.set_selected_visual(true)
+			domino.set_selectable_visual(false)
+		else:
+			domino.set_selected_visual(false)
+
+			# If something is already selected,
+			# disable the green outline on everything else
+			if active_domino != null:
+				domino.set_selectable_visual(false)
+			else:
+				domino.check_playability()

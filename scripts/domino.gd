@@ -43,8 +43,8 @@ func _update_pip_visuals() -> void:
 	if left_pip_sprite == null or right_pip_sprite == null:
 		return
 
-	# Validate pip values
 	left_pip_value = _sanitise_pip_value(left_pip_value)
+	# Validate pip values
 	right_pip_value = _sanitise_pip_value(right_pip_value)
 
 	# Load pip textures
@@ -331,3 +331,24 @@ func get_placement_offset() -> Vector2:
 		2: return Vector2(24, 7)
 		3: return Vector2(12, 19)
 	return Vector2.ZERO
+
+# Functions to handle visual state changes on the dominoes based on playability and selection status.
+
+func set_selected_visual(selected: bool) -> void:
+	if selected:
+		modulate = Color(1, 1, 1, 0.75)
+		# scale = Vector2(1.5, 1.5)
+	else:
+		modulate = Color.white
+		scale = Vector2.ONE
+
+func set_selectable_visual(selectable: bool) -> void:
+	if base_sprite and base_sprite.material:
+		var mat = base_sprite.material as ShaderMaterial
+		if mat:
+			mat.set_shader_param("is_active", selectable)
+
+	if lip_sprite and lip_sprite.material:
+		var mat = lip_sprite.material as ShaderMaterial
+		if mat:
+			mat.set_shader_param("is_active", selectable)

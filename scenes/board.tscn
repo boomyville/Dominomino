@@ -5,6 +5,7 @@
 [node name="Control" type="Control"]
 mouse_filter = 2
 script = ExtResource( 1 )
+grid_size = 8
 
 [node name="GridContainer" type="GridContainer" parent="."]
 margin_right = 40.0
@@ -13,4 +14,4 @@ rect_min_size = Vector2( 384, 384 )
 mouse_filter = 2
 custom_constants/vseparation = 0
 custom_constants/hseparation = 0
-columns = 16
+columns = 12
