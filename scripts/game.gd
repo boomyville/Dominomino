@@ -4,13 +4,13 @@ onready var board = $GridPosition/Board
 onready var hand = $PlayerHandPosition/PlayerHand 
 onready var ok_button = $UI/UIPosition/UIContainer/OKButton
 onready var undo_button = $UI/UIPosition/UIContainer/UndoButton
-onready var energy_label = $UI/EnergyPosition/Label
+onready var energy_label = $UI/EnergyPosition/Energy
+onready var combo_label = $UI/EnergyPosition/Combo
 onready var settings_button = $UI/SettingsPosition/SettingsButton
 onready var rotate_button = $UI/UIPosition/UIContainer/RotateButton
 
 const SETTINGS_POPUP_SCENE = preload("res://scenes/settings.tscn")
 
-# We can drop your template domino .tres files directly into this array via the inspector!
 export(Array, Resource) var player_stack = []
 
 enum PlayState { IDLE, DRAGGING, VERIFYING, PROCESSING, REPOSITIONING }
@@ -20,70 +20,59 @@ var player_discard_pile: Array = []
 var player_void_pile: Array = []
 var current_play_state = PlayState.IDLE
 var active_domino = null
-var active_domino_origin = Vector2.ZERO 
+var active_domino_origin = Vector2.ZERO
 var last_placed_domino = null
 var last_placed_origin = Vector2.ZERO
-var last_placed_slot = null  # Track the original hand slot of the last placed domino for undo purposes
+var last_placed_slot = null
 var domino_snap_offset: Vector2 = Vector2.ZERO
 
+# Cached result from the last evaluate_candidate_placement call so _on_ok_pressed
+# can apply the correct discounted cost without re-scanning the board.
+var _last_placement_eval: Dictionary = {"valid": false, "matched_reduction": 0, "has_any_match": false}
+
 func _ready() -> void:
-	# Randomize Godot's internal math engine seed so every run is unique
 	randomize()
-	
-	# Set up and draw an initial starting hand
 	prepare_combat_draw_pile()
 	draw_dominoes(3)
 
-	# Connect validation button click events safely
 	ok_button.connect("pressed", self, "_on_ok_pressed")
 	undo_button.connect("pressed", self, "_on_undo_pressed")
 	rotate_button.connect("pressed", self, "_on_rotate_pressed")
 	_toggle_verification_ui(false)
-	
-	# Connect the settings button to our popup opening function
+
 	settings_button.connect("pressed", self, "_on_settings_pressed")
 
 	GameState.connect("player_energy_changed", self, "_on_energy_adjusted")
-	GameState.set_starting_player_energy(12)  # ADD THIS — must be after signal connect
-	
+	GameState.connect("player_combo_changed", self, "_on_combo_adjusted")
+	GameState.set_starting_player_energy(20)
+
 	_refresh_hand_playability()
 
-	# Calculate domino snap offset from actual sprite dimensions
-	# When the domino is placed over the board, we have to account for the difference 
-	# between the sprite's center point and the grid slot's center point to get a clean snap
-	# We calculate this once when the game starts by loading a temporary domino instance, 
-	# measuring its sprite, and then freeing it immediately 
 	var temp = preload("res://scenes/domino.tscn").instance()
 	var sprite = temp.get_node_or_null("BaseSprite")
 	if sprite and sprite.texture:
 		var size = sprite.texture.get_size() * sprite.scale
-		#domino_snap_offset = Vector2(size.x * 0.25, size.y * 0.5)
-		domino_snap_offset = Vector2(0, 0)  # ADJUST THIS if your domino sprite isn't perfectly centered on its grid slot
+		domino_snap_offset = Vector2(0, 0)
 	temp.free()
 
 func _process(_delta) -> void:
 	if active_domino != null and current_play_state == PlayState.DRAGGING:
 		var visual_offset = active_domino.get_placement_offset()
-		
 		var logical_pos = active_domino.global_position - visual_offset
 		var grid_pos = board.world_to_grid(logical_pos)
 		var gx = int(grid_pos.x)
 		var gy = int(grid_pos.y)
 		var vertical = active_domino.is_vertical()
-		if board.is_placement_valid(gx, gy, vertical):
-			board.highlight_preview(gx, gy, vertical)
-		else:
-			board.clear_preview()
+		# Always call highlight_preview — board.gd decides tile3 (valid), tile4 (pip-blocked),
+		# or nothing (cells occupied/OOB) internally.
+		board.highlight_preview(gx, gy, vertical, active_domino)
 
 func _on_domino_clicked(domino) -> void:
 	print("_on_domino_clicked | state: ", current_play_state, " | domino: ", domino, " | last_placed: ", last_placed_domino)
-	
-	# NEW GUARD: If the hand container is currently shifting tiles, 
-	# ignore clicks to prevent coordinate corruption!
+
 	if hand.is_shuffling:
 		return
-		
-	# 1. Handle picking up a domino that is already on the board awaiting verification
+
 	if current_play_state == PlayState.VERIFYING and domino == last_placed_domino:
 		board.remove_domino_from_matrix(last_placed_domino)
 		active_domino = last_placed_domino
@@ -93,62 +82,51 @@ func _on_domino_clicked(domino) -> void:
 		current_play_state = PlayState.DRAGGING
 		_toggle_verification_ui(false)
 
-		# Reparent to DragLayer so it renders above UI, same as initial pickup
 		var global_pos = active_domino.global_position
 		var old_parent = active_domino.get_parent()
 		old_parent.remove_child(active_domino)
 		$DragLayer.add_child(active_domino)
 		active_domino.global_position = global_pos
-		
+
 		active_domino.start_drag_from(get_global_mouse_position())
 		return
-	
-	# If we are waiting for confirmation on a placed domino, ignore clicking other dominoes
+
 	if last_placed_domino != null:
 		return
-	
-	# 2. CLICK-TO-SELECT MODE: Second click on the SAME dragging domino drops it down
+
 	if not Settings.mouse_mode_enabled and current_play_state == PlayState.DRAGGING and active_domino == domino:
 		_try_place_active_domino()
 		return
-	
-	# 3. Standard initial pickup from hand
+
 	if current_play_state != PlayState.IDLE:
 		return
 
-	# SET VALUES FIRST: Capture the original home parent before breaking the chain!
 	active_domino = domino
 	active_domino_origin = domino.global_position
-	last_placed_slot = domino.get_parent() 
+	last_placed_slot = domino.get_parent()
 	current_play_state = PlayState.DRAGGING
 	active_domino.set_selected_visual(true)
 	_refresh_domino_selection_visuals()
 
-	# REPARENT SECOND: Now safe to remove since last_placed_slot is populated
 	var global_pos = domino.global_position
 	last_placed_slot.remove_child(domino)
 	$DragLayer.add_child(domino)
 	domino.global_position = global_pos
-	
+
 	if Settings.mouse_mode_enabled:
 		domino.start_drag()
 	else:
 		domino.start_drag_from(get_global_mouse_position())
-		
-	# Refresh UI states at the very end so the Rotate button knows we are DRAGGING
+
 	_toggle_verification_ui(false)
 
 func _input(event) -> void:
-	# If the player clicks or releases the mouse over a UI button, 
-	# ignore the event completely so it doesn't cancel the dragging domino!
 	if event is InputEventMouseButton:
-		# Check if the mouse is currently over our UI action container or settings position
 		var ui_rect = $UI/UIPosition/UIContainer.get_global_rect()
 		var settings_rect = $UI/SettingsPosition/SettingsButton.get_global_rect()
 		var mouse_pos = get_global_mouse_position()
-		
 		if ui_rect.has_point(mouse_pos) or settings_rect.has_point(mouse_pos):
-			return # Abort! Let the button handle the click, don't drop the domino.
+			return
 
 	if not Settings.mouse_mode_enabled:
 		if event is InputEventMouseButton and event.button_index == BUTTON_LEFT and event.pressed:
@@ -162,7 +140,7 @@ func _input(event) -> void:
 				get_tree().set_input_as_handled()
 				return
 		return
-		
+
 	if event is InputEventMouseButton and event.button_index == BUTTON_LEFT and not event.pressed:
 		if current_play_state == PlayState.DRAGGING and active_domino != null:
 			_try_place_active_domino()
@@ -173,9 +151,7 @@ func _input(event) -> void:
 
 func _try_place_active_domino() -> void:
 	print("Call try_place_active_domino at:", OS.get_ticks_msec())
-	
-	# Convert global_position back to "logical" anchor by removing the visual offset
-	# that placement applies, based on the domino's CURRENT rotation
+
 	var visual_offset = active_domino.get_placement_offset()
 	var logical_pos = active_domino.global_position - visual_offset
 	var grid_pos = board.world_to_grid(logical_pos)
@@ -183,20 +159,21 @@ func _try_place_active_domino() -> void:
 	var gy = int(grid_pos.y)
 	var vertical = active_domino.is_vertical()
 
-	if not board.is_placement_valid(gx, gy, vertical):
+	if not board.is_placement_valid(gx, gy, vertical, active_domino):
 		board.clear_preview()
 		_cancel_active_domino()
 		return
+
+	# Cache the evaluation result so _on_ok_pressed can use the exact discount
+	# that applied to this placement without re-scanning.
+	_last_placement_eval = board.evaluate_candidate_placement(active_domino, gx, gy, vertical)
 
 	board.clear_preview()
 	var old_parent = active_domino.get_parent()
 	old_parent.remove_child(active_domino)
 	board.add_child(active_domino)
 
-	# 1. Get world snap position once (No duplicate var declaration)
 	var snap_world = board.grid_to_world(gx, gy)
-	
-	# 2. Assign the visual snap position incorporating rotation offset
 	active_domino.global_position = snap_world + visual_offset
 	print("Active domino global pos: ", active_domino.global_position, " | Rotation: ", active_domino.rotation_step, " | Snap world pos: ", snap_world, " | Visual offset: ", visual_offset)
 
@@ -212,14 +189,10 @@ func _try_place_active_domino() -> void:
 
 	active_domino = null
 	# NOTE: Do NOT call _refresh_domino_selection_visuals() here.
-	# Placement is not yet a completed or cancelled move (still pending OK/Undo),
-	# so the in-hand green highlight should stay suppressed until _on_ok_pressed()
-	# or _on_undo_pressed() resolves the pending placement.
-	
-	# 1. Trigger the hand repositioning (It will handle its own timing now!)
+	# Still pending OK/Undo — hand shaders stay suppressed until move is resolved.
+
 	hand.clean_and_reposition_hand()
-	
-	# 2. INSTANT UNLOCK: Set the state immediately so buttons are active right away
+
 	if Settings.fast_mode_enabled:
 		_on_ok_pressed()
 	else:
@@ -237,47 +210,37 @@ func _cancel_active_domino() -> void:
 	current_play_state = PlayState.IDLE
 	board.clear_preview()
 
-	# Hide the rotate button since we are back to IDLE
 	_toggle_verification_ui(false)
 
-	# 1. Grab the current parent safely
 	var current_parent = domino.get_parent()
 
-	# 2. Check if it's currently floating inside the DragLayer
 	if current_parent == $DragLayer:
 		var global_pos_before = domino.global_position
 		$DragLayer.remove_child(domino)
-		
-		# --- LIFECYCLE FIX GATEWAY ---
-		# If the original hand slot wrapper was queue_freed during repositioning,
-		# regenerate a fresh container slot control right now so the domino has a home!
+
 		if not is_instance_valid(last_placed_slot) or last_placed_slot.get_parent() == null:
 			last_placed_slot = Control.new()
 			last_placed_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			last_placed_slot.rect_min_size = Vector2(48, 28) # Use your hand layout's target slot sizes
+			last_placed_slot.rect_min_size = Vector2(48, 28)
 			hand.add_child(last_placed_slot)
-		# -----------------------------
 
 		last_placed_slot.add_child(domino)
-		# Convert coordinates back to slot space safely
 		domino.position = last_placed_slot.get_global_transform().affine_inverse().xform(global_pos_before)
 
 	domino.return_to_hand(origin)
 
-	# IMPORTANT: refresh AFTER the domino is reparented back into a hand slot.
-	# _refresh_domino_selection_visuals() only loops over hand.get_children(),
-	# so calling it while the domino was still under $DragLayer meant this
-	# specific domino was skipped and never got check_playability() re-applied.
+	# Refresh AFTER the domino is back in its hand slot so the loop sees it.
 	_refresh_domino_selection_visuals()
+
+	# Also reset combo — the player cancelled, no match was committed.
+	GameState.reset_combo()
 
 func _sort_board_dominoes_by_y() -> void:
 	var dominoes = []
 	for child in board.get_children():
 		if child is Area2D:
 			dominoes.append(child)
-	
 	dominoes.sort_custom(self, "_sort_by_y")
-	
 	for domino in dominoes:
 		board.remove_child(domino)
 	for domino in dominoes:
@@ -285,15 +248,10 @@ func _sort_board_dominoes_by_y() -> void:
 
 func _sort_by_y(a, b) -> bool:
 	return a.global_position.y < b.global_position.y
-	
+
 func _toggle_verification_ui(show_verification: bool) -> void:
-	# OK and Undo only show up when a domino is waiting on the board to be confirmed
 	ok_button.visible = show_verification
 	undo_button.visible = show_verification
-	
-	# Rotate button rules: 
-	# 1. Mouse Mode must be OFF (Click-to-Select)
-	# 2. The player must be actively dragging/floating a domino (NOT verifying a placed one)
 	if not Settings.mouse_mode_enabled and current_play_state == PlayState.DRAGGING and active_domino != null:
 		rotate_button.visible = true
 	else:
@@ -302,163 +260,220 @@ func _toggle_verification_ui(show_verification: bool) -> void:
 func _on_ok_pressed() -> void:
 	if last_placed_domino == null:
 		return
-	var cost = GameState.calculate_domino_cost(last_placed_domino.left_pip_value, last_placed_domino.right_pip_value)
+
+	# Apply the cached discounted cost from the actual placement evaluation.
+	var cost = GameState.calculate_domino_cost_discounted(
+		last_placed_domino.left_pip_value,
+		last_placed_domino.right_pip_value,
+		_last_placement_eval.get("matched_reduction", 0)
+	)
 	GameState.spend_player_energy(cost)
-	
+
+	# Update combo: increment if a pip-match occurred, reset if played isolated.
+	if _last_placement_eval.get("has_any_match", false):
+		GameState.increment_combo()
+	else:
+		GameState.reset_combo()
+
+	_last_placement_eval = {"valid": false, "matched_reduction": 0, "has_any_match": false}
+
 	last_placed_domino.lock_to_board()
 	_sort_board_dominoes_by_y()
 	last_placed_domino = null
 	last_placed_origin = Vector2.ZERO
 
-	# Move is now fully completed: restore the in-hand green highlight.
+	# Move is fully committed: restore in-hand green highlights.
 	_refresh_domino_selection_visuals()
-	
-	# FIX: Only flip back to IDLE if we aren't currently waiting on a hand layout slide
+
 	if current_play_state != PlayState.REPOSITIONING:
 		current_play_state = PlayState.IDLE
-		
+
 	_toggle_verification_ui(false)
 
 func _on_undo_pressed() -> void:
 	print("_on_undo_pressed called")
 	if last_placed_domino == null:
 		return
-		
+
 	board.remove_domino_from_matrix(last_placed_domino)
 	var board_parent = last_placed_domino.get_parent()
 	var global_pos_before = last_placed_domino.global_position
 	board_parent.remove_child(last_placed_domino)
-	
-	# If the original hand slot wrapper was deleted during a previous drop, rebuild it!
+
 	if not is_instance_valid(last_placed_slot) or last_placed_slot.get_parent() == null:
 		last_placed_slot = Control.new()
 		last_placed_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		last_placed_slot.rect_min_size = Vector2(48, 28)
 		hand.add_child(last_placed_slot)
-	
+
 	last_placed_slot.add_child(last_placed_domino)
 	last_placed_domino.position = last_placed_slot.get_global_transform().affine_inverse().xform(global_pos_before)
-	
+
 	last_placed_domino.current_status = last_placed_domino.StatusType.HAND
 	last_placed_domino.input_pickable = true
-	
-	# Run the native return animation back to its hand coordinates
+
 	last_placed_domino.return_to_hand(last_placed_origin)
-	
+
 	last_placed_domino = null
 	last_placed_origin = Vector2.ZERO
 	last_placed_slot = null
+	_last_placement_eval = {"valid": false, "matched_reduction": 0, "has_any_match": false}
 	current_play_state = PlayState.IDLE
 	_toggle_verification_ui(false)
 
-	# Move is now cancelled: restore the in-hand green highlight.
-	# (Moved to AFTER active_domino/last_placed_domino are cleared so the
-	# refresh sees a clean state and doesn't accidentally suppress dominoes.)
+	# Move cancelled: restore in-hand green highlights.
 	_refresh_domino_selection_visuals()
 
-	# NEW FIX: Call the slide reorganization routine here!
-	# This forces the hand to smoothly evaluate its boxes and glide them 
-	# out to accommodate the returned domino over your user-defined duration.
 	hand.clean_and_reposition_hand()
 
 func _on_rotate_pressed() -> void:
-	# Only allow button rotation if a domino is actively floating/dragging
 	if current_play_state == PlayState.DRAGGING and active_domino != null:
-		active_domino.rotate_domino()	
+		active_domino.rotate_domino()
 
 # ===================================================================================
 # Domino draw and stack management logic
 # ===================================================================================
 
-# Safely clones the master files into unique, isolated RAM packets for this battle
 func prepare_combat_draw_pile() -> void:
 	player_draw_pile.clear()
 	player_discard_pile.clear()
 	print("Stack array size: ", player_stack.size())
-	
 	for base_resource in player_stack:
 		if base_resource is DominoData:
-			# We use duplicate() so that any changes to the data during combat won't affect the original .tres template file
 			var runtime_copy = base_resource.duplicate()
 			player_draw_pile.append(runtime_copy)
 
-# Pulls random data packets out of the stack and commands the hand to spawn them
 func draw_dominoes(amount: int) -> void:
 	for _i in range(amount):
-		# If you completely run out of dominos, recycle the discard pile
 		if player_draw_pile.empty():
 			if player_discard_pile.empty():
 				print("The player's deck is completely exhausted!")
 				break
 			_player_draw_pile_empty()
-			
-		# Pick a random domino position index remaining in our draw stack
 		var random_idx = randi() % player_draw_pile.size()
 		var chosen_domino_data: DominoData = player_draw_pile[random_idx]
-		
-		# Remove the data packet from the draw stack
 		player_draw_pile.remove(random_idx)
 		print("Drawing domino index [", _i, "] - Left Pip: ", chosen_domino_data.base_left_pip, " Right Pip: ", chosen_domino_data.base_right_pip)
-		
-		# Send the isolated data packet to your physical hand container UI to display it
 		if hand.has_method("add_domino_to_hand"):
 			hand.add_domino_to_hand(chosen_domino_data)
 		else:
 			push_error("CRITICAL: player_hand script is missing the add_domino_to_hand function!")
 
-# Shuffles discarded tiles back into active rotation when empty
 func _recycle_player_discard_pile() -> void:
 	print("Refilling draw pile from discard graveyard...")
 	player_draw_pile = player_discard_pile.duplicate()
 	player_discard_pile.clear()
 
 func _player_draw_pile_empty() -> void:
-	# Game over when we 'deck out'
 	print("Player has no more dominoes to draw! Game over!")
-	return;
+	return
 
 func _on_energy_adjusted(new_energy: int) -> void:
-
 	energy_label.text = str(new_energy)
 	_refresh_hand_playability()
 
+func _on_combo_adjusted(new_combo: int) -> void:
+	combo_label.text = str(new_combo)
+
+# ===================================================================================
+# Hand playability — determines which shader each hand domino gets.
+# 
+# For each hand domino we determine:
+#   1. Can afford full cost with no adjacency needed?  → FULL_COST_PLAYABLE (outline)
+#   2. Can't afford full cost, BUT there exists at least one board position (across all
+#      4 rotations) where a valid pip-match reduces the cost to affordable?  → MATCH_PLAYABLE (outline2)
+#   3. Neither?  → UNPLAYABLE
+#
+# Note: a domino that CAN afford full cost might ALSO have match opportunities.
+# In that case FULL_COST_PLAYABLE takes priority — the player is free to play it
+# either way and the base outline communicates "you can play this right now."
+# ===================================================================================
+
 func _refresh_hand_playability() -> void:
-	for slot in hand.get_children():
-		if slot.get_child_count() > 0:
-			var domino = slot.get_child(0)
-			if domino and domino.has_method("check_playability"):
-				domino.check_playability()	
-
-func _on_settings_pressed() -> void:
-	# 1. Block any accidental clicks or drag events while menu is open
-	if current_play_state == PlayState.DRAGGING:
-		return # Don't let them open menus mid-drag!
-		
-	# 2. Instance the popup
-	var popup_instance = SETTINGS_POPUP_SCENE.instance()
-	
-	# 3. Add it straight to your CanvasLayer UI so it draws over the game world
-	$UI.add_child(popup_instance)
-	
-	# 4. Tell the PopupPanel to center itself on screen and show up!
-	popup_instance.popup_centered()
-
-func _refresh_domino_selection_visuals() -> void:
 	for slot in hand.get_children():
 		if slot.get_child_count() == 0:
 			continue
-
 		var domino = slot.get_child(0)
+		if domino == null or not domino.has_method("set_playability_visual"):
+			continue
 
-		if domino == active_domino:
-			domino.set_selected_visual(true)
-			domino.set_selectable_visual(false)
+		# Always scan for a match opportunity first.
+		# MATCH_PLAYABLE (shader2) takes priority over FULL_COST_PLAYABLE (shader1)
+		# because a combo opportunity is the more specific/interesting state to show.
+		var has_affordable_match = _scan_board_for_match_placement(domino)
+		if has_affordable_match:
+			domino.set_playability_visual(domino.PlayabilityMode.MATCH_PLAYABLE)
+			continue
+
+		var full_cost = GameState.calculate_domino_cost(domino.left_pip_value, domino.right_pip_value)
+		var can_afford_full = GameState.current_player_energy >= full_cost
+		if can_afford_full:
+			domino.set_playability_visual(domino.PlayabilityMode.FULL_COST_PLAYABLE)
 		else:
-			domino.set_selected_visual(false)
+			domino.set_playability_visual(domino.PlayabilityMode.UNPLAYABLE)
 
-			# If something is already selected,
-			# disable the green outline on everything else
-			if active_domino != null:
-				domino.set_selectable_visual(false)
-			else:
-				domino.check_playability()
+# Tries all 4 rotations of the domino at every geometrically valid empty cell pair
+# on the board. Returns true as soon as one valid pip-matching placement is found
+# that the player can currently afford after the discount.
+func _scan_board_for_match_placement(domino) -> bool:
+	var original_rotation = domino.rotation_step
+
+	for rot in range(4):
+		domino.rotation_step = rot
+		var vertical = domino.is_vertical()
+
+		for y in range(board.grid_size):
+			for x in range(board.grid_size):
+				if not board.is_geometry_valid(x, y, vertical):
+					continue
+
+				var eval = board.evaluate_candidate_placement(domino, x, y, vertical)
+
+				if not eval.valid:
+					continue
+				if not eval.has_any_match:
+					continue
+
+				var discounted_cost = GameState.calculate_domino_cost_discounted(
+					domino.left_pip_value,
+					domino.right_pip_value,
+					eval.matched_reduction
+				)
+				if GameState.current_player_energy >= discounted_cost:
+					domino.rotation_step = original_rotation
+					return true
+
+	domino.rotation_step = original_rotation
+	return false
+
+func _refresh_domino_selection_visuals() -> void:
+	if active_domino != null:
+		# A domino is being dragged — suppress all other hand dominoes cleanly.
+		# Use set_playability_visual(UNPLAYABLE) rather than set_selectable_visual(false)
+		# so we go through the proper material/shader path and don't leave stale state.
+		for slot in hand.get_children():
+			if slot.get_child_count() == 0:
+				continue
+			var domino = slot.get_child(0)
+			if domino == active_domino:
+				domino.set_selected_visual(true)
+			elif domino.has_method("set_playability_visual"):
+				domino.set_selected_visual(false)
+				domino.set_playability_visual(domino.PlayabilityMode.UNPLAYABLE)
+	else:
+		# No active drag — restore every hand domino to its correct shader state.
+		# Delegate entirely to _refresh_hand_playability so shader1 vs shader2
+		# is decided consistently in one place.
+		for slot in hand.get_children():
+			if slot.get_child_count() == 0:
+				continue
+			var domino = slot.get_child(0)
+			domino.set_selected_visual(false)
+		_refresh_hand_playability()
+
+func _on_settings_pressed() -> void:
+	if current_play_state == PlayState.DRAGGING:
+		return
+	var popup_instance = SETTINGS_POPUP_SCENE.instance()
+	$UI.add_child(popup_instance)
+	popup_instance.popup_centered()

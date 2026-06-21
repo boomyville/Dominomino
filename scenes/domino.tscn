@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=2]
+[gd_scene load_steps=10 format=2]
 
 [ext_resource path="res://assets/domino/pip_3.png" type="Texture" id=1]
 [ext_resource path="res://assets/shaders/playable_outline.shader" type="Shader" id=2]
@@ -11,6 +11,11 @@
 extents = Vector2( 24, 15 )
 
 [sub_resource type="ShaderMaterial" id=2]
+shader = ExtResource( 2 )
+shader_param/outline_color = Color( 0, 1, 0, 1 )
+shader_param/is_active = 0.0
+
+[sub_resource type="ShaderMaterial" id=3]
 shader = ExtResource( 2 )
 shader_param/outline_color = Color( 0, 1, 0, 1 )
 shader_param/is_active = 0.0
@@ -47,5 +52,6 @@ texture = ExtResource( 1 )
 position = Vector2( -24, 3 )
 
 [node name="LipSprite" type="Sprite" parent="LipPosition"]
+material = SubResource( 3 )
 position = Vector2( 24, 12 )
 texture = ExtResource( 6 )

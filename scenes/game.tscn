@@ -1,13 +1,15 @@
-[gd_scene load_steps=5 format=2]
+[gd_scene load_steps=7 format=2]
 
 [ext_resource path="res://scripts/game.gd" type="Script" id=1]
 [ext_resource path="res://scenes/board.tscn" type="PackedScene" id=2]
 [ext_resource path="res://scenes/player_hand.tscn" type="PackedScene" id=3]
 [ext_resource path="res://resources/template_domino.tres" type="Resource" id=4]
+[ext_resource path="res://resources/attack_domino_data/strike.tres" type="Resource" id=5]
+[ext_resource path="res://resources/skill_domino_data/defend.tres" type="Resource" id=6]
 
 [node name="Node2D" type="Node2D"]
 script = ExtResource( 1 )
-player_stack = [ ExtResource( 4 ), ExtResource( 4 ), ExtResource( 4 ) ]
+player_stack = [ ExtResource( 4 ), ExtResource( 4 ), ExtResource( 4 ), ExtResource( 5 ), ExtResource( 5 ), ExtResource( 6 ), ExtResource( 6 ), ExtResource( 6 ), ExtResource( 6 ) ]
 
 [node name="GridPosition" type="Position2D" parent="."]
 position = Vector2( 24, 24 )
@@ -54,11 +56,21 @@ text = "Rotate"
 [node name="EnergyPosition" type="Position2D" parent="UI"]
 position = Vector2( 72, 48 )
 
-[node name="Label" type="Label" parent="UI/EnergyPosition"]
+[node name="Energy" type="Label" parent="UI/EnergyPosition"]
 margin_left = 505.0
 margin_top = -3.0
 margin_right = 545.0
 margin_bottom = 11.0
+rect_pivot_offset = Vector2( 17, 2 )
+text = "0"
+align = 2
+
+[node name="Combo" type="Label" parent="UI/EnergyPosition"]
+margin_left = 505.0
+margin_top = 15.0
+margin_right = 545.0
+margin_bottom = 29.0
+rect_pivot_offset = Vector2( 17, 2 )
 text = "0"
 align = 2
 
