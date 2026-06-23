@@ -18,7 +18,7 @@ const TILE_INVALID = preload("res://assets/ui/empty_board_tile4.png")
 # SINGLE_MATCH: the entire candidate domino may only touch ONE board domino in total.
 #              If either cell is adjacent to a second distinct board domino → blocked.
 enum MatchMode { MULTI_MATCH, SINGLE_MATCH, ANY_MATCH }
-var match_mode: int = MatchMode.ANY_MATCH
+var match_mode: int = MatchMode.SINGLE_MATCH
 
 export var grid_size = 10
 

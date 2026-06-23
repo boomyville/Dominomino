@@ -28,16 +28,16 @@ onready var base_sprite = $BaseSprite
 onready var left_pip_sprite = $LeftPip/PipSprite
 onready var right_pip_sprite = $RightPip/PipSprite
 onready var lip_sprite = $LipPosition/LipSprite
+onready var domino_name_label = $DominoName
+onready var outline_sprite = $OutlineSprite
 
 # Shaders — two slots per visual node: base outline and match-discount outline
 const OUTLINE_SHADER = preload("res://assets/shaders/playable_outline.shader")
 const OUTLINE_SHADER_2 = preload("res://assets/shaders/playable_outline2.shader")
 
 # ShaderMaterial instances — created once in _ready(), swapped via set_playability_visual()
-var _base_mat_outline: ShaderMaterial = null      # base_sprite + outline shader
-var _base_mat_outline2: ShaderMaterial = null     # base_sprite + outline2 shader
-var _lip_mat_outline: ShaderMaterial = null       # lip_sprite + outline shader
-var _lip_mat_outline2: ShaderMaterial = null      # lip_sprite + outline2 shader
+var _outline_mat: ShaderMaterial = null
+var _outline_mat2: ShaderMaterial = null
 
 func set_value(left_val: int, right_val: int) -> void:
 	left_pip_value = left_val
@@ -118,16 +118,16 @@ func _update_background_skin() -> void:
 		return
 	match domino_data.rarity:
 		DominoData.RarityType.LEGENDARY:
-			base_sprite.texture = load("res://assets/domino/domino_base.png")
+			base_sprite.texture = load("res://assets/domino/domino_base_0.png")
 			base_sprite.self_modulate = Color.white
 		DominoData.RarityType.BLIGHT:
-			base_sprite.texture = load("res://assets/domino/domino_base.png")
+			base_sprite.texture = load("res://assets/domino/domino_base_0.png")
 			base_sprite.self_modulate = Color("8a2be2")
 		DominoData.RarityType.STATUS:
-			base_sprite.texture = load("res://assets/domino/domino_base.png")
+			base_sprite.texture = load("res://assets/domino/domino_base_0.png")
 			base_sprite.self_modulate = Color("8b0000")
 		_:
-			base_sprite.texture = load("res://assets/domino/domino_base.png")
+			base_sprite.texture = load("res://assets/domino/domino_base_0.png")
 			base_sprite.self_modulate = Color.white
 
 func set_domino_data(new_data) -> void:
@@ -138,9 +138,13 @@ func set_domino_data(new_data) -> void:
 		left_pip_sprite = get_node_or_null("LeftPip/PipSprite")
 	if right_pip_sprite == null:
 		right_pip_sprite = get_node_or_null("RightPip/PipSprite")
+	if domino_name_label == null:
+		domino_name_label = get_node_or_null("DominoName")
 	if is_inside_tree() and domino_data != null:
 		left_pip_value = domino_data.base_left_pip
 		right_pip_value = domino_data.base_right_pip
+		if domino_name_label != null:
+			domino_name_label.text = domino_data.domino_name
 		_update_background_skin()
 		_update_pip_visuals()
 
@@ -156,32 +160,21 @@ func set_domino_data(new_data) -> void:
 func set_playability_visual(mode: int) -> void:
 	match mode:
 		PlayabilityMode.UNPLAYABLE:
-			if base_sprite:
-				base_sprite.material = _base_mat_outline
-				_base_mat_outline.set_shader_param("is_active", false)
-			if lip_sprite:
-				lip_sprite.material = _lip_mat_outline
-				_lip_mat_outline.set_shader_param("is_active", false)
+			if outline_sprite:
+				outline_sprite.material = _outline_mat
+				_outline_mat.set_shader_param("is_active", false)
 
 		PlayabilityMode.FULL_COST_PLAYABLE:
-			if base_sprite:
-				base_sprite.material = _base_mat_outline
-				_base_mat_outline.set_shader_param("is_active", true)
-				_base_mat_outline2.set_shader_param("is_active", false)
-			if lip_sprite:
-				lip_sprite.material = _lip_mat_outline
-				_lip_mat_outline.set_shader_param("is_active", true)
-				_lip_mat_outline2.set_shader_param("is_active", false)
+			if outline_sprite:
+				outline_sprite.material = _outline_mat
+				_outline_mat.set_shader_param("is_active", true)
+				_outline_mat2.set_shader_param("is_active", false)
 
 		PlayabilityMode.MATCH_PLAYABLE:
-			if base_sprite:
-				base_sprite.material = _base_mat_outline2
-				_base_mat_outline.set_shader_param("is_active", false)
-				_base_mat_outline2.set_shader_param("is_active", true)
-			if lip_sprite:
-				lip_sprite.material = _lip_mat_outline2
-				_lip_mat_outline.set_shader_param("is_active", false)
-				_lip_mat_outline2.set_shader_param("is_active", true)
+			if outline_sprite:
+				outline_sprite.material = _outline_mat2
+				_outline_mat.set_shader_param("is_active", false)
+				_outline_mat2.set_shader_param("is_active", true)
 
 # Legacy wrapper — kept so existing callsites in domino.gd._input_event still compile.
 # Performs a simple energy check only (no board context).
@@ -198,30 +191,30 @@ func _ready() -> void:
 	input_pickable = true
 	print("Domino _ready | input_pickable: ", input_pickable, " | monitoring: ", monitoring)
 
-	# Create all four ShaderMaterial instances once here.
-	# We never create new ones after this — we just swap which one is assigned to .material.
-	_base_mat_outline = ShaderMaterial.new()
-	_base_mat_outline.shader = OUTLINE_SHADER
-	_base_mat_outline2 = ShaderMaterial.new()
-	_base_mat_outline2.shader = OUTLINE_SHADER_2
+	# Initialize the materials once
+	_outline_mat = ShaderMaterial.new()
+	_outline_mat.shader = OUTLINE_SHADER
+	_outline_mat2 = ShaderMaterial.new()
+	_outline_mat2.shader = OUTLINE_SHADER_2
 
-	_lip_mat_outline = ShaderMaterial.new()
-	_lip_mat_outline.shader = OUTLINE_SHADER
-	_lip_mat_outline2 = ShaderMaterial.new()
-	_lip_mat_outline2.shader = OUTLINE_SHADER_2
-
-	if base_sprite:
-		base_sprite.material = _base_mat_outline
-	if lip_sprite:
-		lip_sprite.material = _lip_mat_outline
+	if outline_sprite:
+		outline_sprite.material = _outline_mat
 
 	if domino_data != null:
 		left_pip_value = domino_data.base_left_pip
 		right_pip_value = domino_data.base_right_pip
+		if domino_name_label:
+			domino_name_label.text = domino_data.domino_name
 		_update_pip_visuals()
 		_update_background_skin()
 
 	check_playability()
+
+	# Pass the aspect tracking size of the whole outline layout
+	if outline_sprite and outline_sprite.texture:
+		var o_size = outline_sprite.texture.get_size()
+		_outline_mat.set_shader_param("object_scale", o_size)
+		_outline_mat2.set_shader_param("object_scale", o_size)
 
 func _input_event(_viewport, event, _shape_idx) -> void:
 	if event is InputEventMouseButton and event.button_index == BUTTON_RIGHT and event.pressed:
@@ -254,10 +247,8 @@ func _process(_delta) -> void:
 func lock_to_board() -> void:
 	stop_drag()
 	current_status = StatusType.BOARD
-	if base_sprite:
-		base_sprite.material = null
-	if lip_sprite:
-		lip_sprite.material = null
+	if outline_sprite:
+		outline_sprite.material = null
 	input_pickable = false
 	z_as_relative = false
 
@@ -283,18 +274,47 @@ func return_to_hand(origin: Vector2) -> void:
 func rotate_domino() -> void:
 	rotation_step = (rotation_step + 1) % 4
 	rotation_degrees = rotation_step * 90.0
+	
+	# Handle base skin textures
 	if base_sprite:
 		base_sprite.texture = load("res://assets/domino/domino_base_" + str(rotation_step) + ".png")
+		
+	# Update your shader aspect ratio bounds to match the new texture size
+	# Assign the correct outline layout file paths dynamically
+	if outline_sprite:
+		var outline_path = "res://assets/domino/domino_outline_" + str(rotation_step) + ".png"
+		outline_sprite.texture = load(outline_path)
+		
+		# Keep the scaling metrics synchronous in memory
+		if outline_sprite.texture:
+			var o_size = outline_sprite.texture.get_size()
+			if _outline_mat: _outline_mat.set_shader_param("object_scale", o_size)
+			if _outline_mat2: _outline_mat2.set_shader_param("object_scale", o_size)
+
+	# 3. Handle bottom lip positioning and textures
 	lip_sprite.rotation_degrees = -rotation_degrees
 	if is_vertical():
 		lip_sprite.texture = load("res://assets/domino/lip_narrow.png")
 	else:
 		lip_sprite.texture = load("res://assets/domino/lip_wide.png")
+		
 	match rotation_step:
-		0: lip_sprite.position = Vector2(24, 12)
-		1: lip_sprite.position = Vector2(51, -3)
-		2: lip_sprite.position = Vector2(24, -18)
-		3: lip_sprite.position = Vector2(-2, -3)
+		0: # Horizontal Default
+			lip_sprite.position = Vector2(24, 11)
+			if outline_sprite: 
+				outline_sprite.position = Vector2(-24, -8)
+		1: # 90 deg CW
+			lip_sprite.position = Vector2(52, -5)
+			if outline_sprite: 
+				outline_sprite.position = Vector2(-21, -10) 
+		2: # 180 deg Flipped Horizontal
+			lip_sprite.position = Vector2(24, -21)
+			if outline_sprite: 
+				outline_sprite.position = Vector2(-24, -13)
+		3: # 270 deg CCW
+			lip_sprite.position = Vector2(-4, -5)
+			if outline_sprite: 
+				outline_sprite.position = Vector2(-27, -10)
 
 func get_top_pip() -> int:
 	match rotation_step:
@@ -350,11 +370,7 @@ func set_selected_visual(selected: bool) -> void:
 		scale = Vector2.ONE
 
 func set_selectable_visual(selectable: bool) -> void:
-	if base_sprite and base_sprite.material:
-		var mat = base_sprite.material as ShaderMaterial
-		if mat:
-			mat.set_shader_param("is_active", selectable)
-	if lip_sprite and lip_sprite.material:
-		var mat = lip_sprite.material as ShaderMaterial
+	if outline_sprite and outline_sprite.material:
+		var mat = outline_sprite.material as ShaderMaterial
 		if mat:
 			mat.set_shader_param("is_active", selectable)

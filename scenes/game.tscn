@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=2]
+[gd_scene load_steps=8 format=2]
 
 [ext_resource path="res://scripts/game.gd" type="Script" id=1]
 [ext_resource path="res://scenes/board.tscn" type="PackedScene" id=2]
@@ -6,6 +6,7 @@
 [ext_resource path="res://resources/template_domino.tres" type="Resource" id=4]
 [ext_resource path="res://resources/attack_domino_data/strike.tres" type="Resource" id=5]
 [ext_resource path="res://resources/skill_domino_data/defend.tres" type="Resource" id=6]
+[ext_resource path="res://fonts/MicroWhite.fnt" type="BitmapFont" id=7]
 
 [node name="Node2D" type="Node2D"]
 script = ExtResource( 1 )
@@ -22,7 +23,7 @@ __meta__ = {
 grid_size = 10
 
 [node name="PlayerHandPosition" type="Position2D" parent="."]
-position = Vector2( 32, 320 )
+position = Vector2( 32, 288 )
 
 [node name="PlayerHand" parent="PlayerHandPosition" instance=ExtResource( 3 )]
 mouse_filter = 2
@@ -37,20 +38,23 @@ margin_right = 40.0
 margin_bottom = 40.0
 
 [node name="OKButton" type="Button" parent="UI/UIPosition/UIContainer"]
-margin_right = 31.0
+margin_right = 28.0
 margin_bottom = 40.0
+custom_fonts/font = ExtResource( 7 )
 text = "OK"
 
 [node name="UndoButton" type="Button" parent="UI/UIPosition/UIContainer"]
-margin_left = 35.0
-margin_right = 81.0
+margin_left = 32.0
+margin_right = 74.0
 margin_bottom = 40.0
+custom_fonts/font = ExtResource( 7 )
 text = "Undo"
 
 [node name="RotateButton" type="Button" parent="UI/UIPosition/UIContainer"]
-margin_left = 85.0
-margin_right = 138.0
+margin_left = 78.0
+margin_right = 132.0
 margin_bottom = 40.0
+custom_fonts/font = ExtResource( 7 )
 text = "Rotate"
 
 [node name="EnergyPosition" type="Position2D" parent="UI"]
@@ -62,6 +66,7 @@ margin_top = -3.0
 margin_right = 545.0
 margin_bottom = 11.0
 rect_pivot_offset = Vector2( 17, 2 )
+custom_fonts/font = ExtResource( 7 )
 text = "0"
 align = 2
 
@@ -71,6 +76,7 @@ margin_top = 15.0
 margin_right = 545.0
 margin_bottom = 29.0
 rect_pivot_offset = Vector2( 17, 2 )
+custom_fonts/font = ExtResource( 7 )
 text = "0"
 align = 2
 
@@ -80,6 +86,7 @@ position = Vector2( 557, 18 )
 [node name="SettingsButton" type="Button" parent="UI/SettingsPosition"]
 margin_right = 63.0
 margin_bottom = 20.0
+custom_fonts/font = ExtResource( 7 )
 text = "Settings"
 
 [node name="DragLayer" type="CanvasLayer" parent="."]

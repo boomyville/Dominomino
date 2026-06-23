@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource( 1 )
 id = 0
-domino_name = "Unknown Domino"
+domino_name = "Defend"
 description = ""
 rarity = 1
 elemental = 0
