@@ -230,6 +230,7 @@ func start_drag() -> void:
 	z_as_relative = false
 	z_index = 1000
 	set_process(true)
+	_set_label_visible(false)
 
 func stop_drag() -> void:
 	drag_state = DragState.IDLE
@@ -251,25 +252,36 @@ func lock_to_board() -> void:
 		outline_sprite.material = null
 	input_pickable = false
 	z_as_relative = false
+	_set_label_visible(false)
 
 func return_to_hand(origin: Vector2) -> void:
 	drag_state = DragState.IDLE
 	z_index = 0
 	set_process(false)
-	print("return_to_hand | current pos: ", position, " | target local origin: Vector2.ZERO")
+	_set_label_visible(false)
+	rotation_step = 3
+	rotate_domino()
+
+	var distance = position.length()  # distance from Vector2.ZERO (home)
+	var duration = clamp(distance / 200.0, 0.05, Settings.domino_tween_duration)
+
 	var tween = Tween.new()
 	add_child(tween)
-	var result = tween.interpolate_property(
+	tween.interpolate_property(
 		self,
 		"position",
 		position,
 		Vector2.ZERO,
-		Settings.domino_tween_duration,
+		duration,
 		Tween.TRANS_CUBIC,
 		Tween.EASE_OUT
 	)
 	tween.start()
+	tween.connect("tween_all_completed", self, "_on_return_tween_completed")
 	tween.connect("tween_all_completed", tween, "queue_free")
+
+func _on_return_tween_completed() -> void:
+	_set_label_visible(true)
 
 func rotate_domino() -> void:
 	rotation_step = (rotation_step + 1) % 4
@@ -290,7 +302,10 @@ func rotate_domino() -> void:
 			var o_size = outline_sprite.texture.get_size()
 			if _outline_mat: _outline_mat.set_shader_param("object_scale", o_size)
 			if _outline_mat2: _outline_mat2.set_shader_param("object_scale", o_size)
-
+	# Counter-rotate the label so it always reads upright
+	if domino_name_label:
+		domino_name_label.rect_rotation = -rotation_degrees
+		
 	# 3. Handle bottom lip positioning and textures
 	lip_sprite.rotation_degrees = -rotation_degrees
 	if is_vertical():
@@ -301,18 +316,22 @@ func rotate_domino() -> void:
 	match rotation_step:
 		0: # Horizontal Default
 			lip_sprite.position = Vector2(24, 11)
+			domino_name_label.rect_position = Vector2(-24, 20)
 			if outline_sprite: 
 				outline_sprite.position = Vector2(-24, -8)
 		1: # 90 deg CW
 			lip_sprite.position = Vector2(52, -5)
+			domino_name_label.rect_position = Vector2(36, 24)
 			if outline_sprite: 
 				outline_sprite.position = Vector2(-21, -10) 
 		2: # 180 deg Flipped Horizontal
 			lip_sprite.position = Vector2(24, -21)
+			domino_name_label.rect_position = Vector2(24, -20)
 			if outline_sprite: 
 				outline_sprite.position = Vector2(-24, -13)
 		3: # 270 deg CCW
 			lip_sprite.position = Vector2(-4, -5)
+			domino_name_label.rect_position = Vector2(-34, -24)
 			if outline_sprite: 
 				outline_sprite.position = Vector2(-27, -10)
 
@@ -374,3 +393,7 @@ func set_selectable_visual(selectable: bool) -> void:
 		var mat = outline_sprite.material as ShaderMaterial
 		if mat:
 			mat.set_shader_param("is_active", selectable)
+
+func _set_label_visible(visible: bool) -> void:
+	if domino_name_label:
+		domino_name_label.visible = visible
