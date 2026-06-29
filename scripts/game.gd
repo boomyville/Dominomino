@@ -11,9 +11,9 @@ onready var rotate_button = $UI/UIPosition/UIContainer/RotateButton
 
 const SETTINGS_POPUP_SCENE = preload("res://scenes/settings.tscn")
 
-export(Array, Resource) var player_stack = []
-
 enum PlayState { IDLE, DRAGGING, VERIFYING, PROCESSING, REPOSITIONING }
+
+export var player_data: Resource  # This is assigned in the editor
 
 var player_draw_pile: Array = []
 var player_discard_pile: Array = []
@@ -33,7 +33,9 @@ var _last_placement_eval: Dictionary = {"valid": false, "matched_reduction": 0, 
 func _ready() -> void:
 	randomize()
 	prepare_combat_draw_pile()
-	draw_dominoes(3)
+
+	GameState.load_player(player_data)     
+	draw_dominoes(GameState.player_starting_draw)
 
 	ok_button.connect("pressed", self, "_on_ok_pressed")
 	undo_button.connect("pressed", self, "_on_undo_pressed")
@@ -44,7 +46,6 @@ func _ready() -> void:
 
 	GameState.connect("player_energy_changed", self, "_on_energy_adjusted")
 	GameState.connect("player_combo_changed", self, "_on_combo_adjusted")
-	GameState.set_starting_player_energy(20)
 
 	_refresh_hand_playability()
 
@@ -333,12 +334,10 @@ func _on_rotate_pressed() -> void:
 # ===================================================================================
 # Domino draw and stack management logic
 # ===================================================================================
-
 func prepare_combat_draw_pile() -> void:
 	player_draw_pile.clear()
 	player_discard_pile.clear()
-	print("Stack array size: ", player_stack.size())
-	for base_resource in player_stack:
+	for base_resource in player_data.stack:  # was player_stack
 		if base_resource is DominoData:
 			var runtime_copy = base_resource.duplicate()
 			player_draw_pile.append(runtime_copy)

@@ -13,9 +13,15 @@ _global_script_classes=[ {
 "class": "DominoData",
 "language": "GDScript",
 "path": "res://scripts/domino_data.gd"
+}, {
+"base": "Resource",
+"class": "PlayerData",
+"language": "GDScript",
+"path": "res://scripts/player_data.gd"
 } ]
 _global_script_class_icons={
-"DominoData": ""
+"DominoData": "",
+"PlayerData": ""
 }
 
 [application]

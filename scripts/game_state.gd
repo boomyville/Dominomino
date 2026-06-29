@@ -3,12 +3,36 @@ extends Node
 
 signal player_energy_changed(new_energy)
 signal player_combo_changed(new_combo)
+signal player_hp_changed(new_hp)
+signal player_lives_changed(new_lives)
 
+var player_current_hp: int = 0
+var player_max_hp: int = 0
+var player_lives: int = 0
+var player_max_energy: int = 0
+var player_energy_per_turn: int = 0
+var player_max_hand_size: int = 0
+var player_draw_per_turn: int = 0
+var player_starting_draw: int = 0
 var current_player_energy: int = 10 setget set_player_energy
 var player_domino_combo: int = 0 setget set_player_combo
 
+func load_player(data: PlayerData) -> void:
+	player_current_hp = data.current_hp
+	player_max_hp = data.max_hp
+	player_lives = data.lives
+	player_max_energy = data.max_energy
+	player_energy_per_turn = data.energy_per_turn
+	player_max_hand_size = data.max_hand_size
+	player_draw_per_turn = data.draw_per_turn
+	player_starting_draw = data.starting_draw
+	set_starting_player_energy(data.starting_energy)
+
 func set_player_energy(value: int) -> void:
 	current_player_energy = int(max(0, value))
+
+func modify_player_energy(amount: int) -> void:
+	current_player_energy = int(clamp(current_player_energy + amount, 0, player_max_energy))
 	emit_signal("player_energy_changed", current_player_energy)
 
 func set_player_combo(value: int) -> void:
@@ -46,3 +70,22 @@ func calculate_domino_cost(left_pip: int, right_pip: int) -> int:
 func calculate_domino_cost_discounted(left_pip: int, right_pip: int, matched_pip_reduction: int) -> int:
 	var base = calculate_domino_cost(left_pip, right_pip)
 	return int(max(0, base - matched_pip_reduction))
+
+func take_damage(amount: int) -> void:
+	player_current_hp = int(clamp(player_current_hp - amount, 0, player_max_hp))
+	emit_signal("player_hp_changed", player_current_hp)
+	if player_current_hp <= 0:
+		pass # Should be game over trigger
+
+func heal(amount: int) -> void:
+	player_current_hp = int(clamp(player_current_hp + amount, 0, player_max_hp))
+	emit_signal("player_hp_changed", player_current_hp)
+
+func lose_life(amount: int) -> void:
+	player_lives = int(max(0, player_lives - amount))
+	emit_signal("player_lives_changed", player_lives)
+	if player_lives <= 0:
+		pass # Should be game over trigger
+
+func restore_energy_for_turn() -> void:
+	self.current_player_energy = int(clamp(current_player_energy + player_energy_per_turn, 0, player_max_energy))
