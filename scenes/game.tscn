@@ -68,7 +68,7 @@ custom_fonts/font = ExtResource( 7 )
 text = "0"
 align = 2
 
-[node name="Combo" type="Label" parent="UI/EnergyPosition"]
+[node name="Chain" type="Label" parent="UI/EnergyPosition"]
 margin_left = 505.0
 margin_top = 15.0
 margin_right = 545.0
@@ -86,6 +86,15 @@ margin_right = 63.0
 margin_bottom = 20.0
 custom_fonts/font = ExtResource( 7 )
 text = "Settings"
+
+[node name="EndTurnPosition" type="Position2D" parent="UI"]
+position = Vector2( 479, 18 )
+
+[node name="EndTurnButton" type="Button" parent="UI/EndTurnPosition"]
+margin_right = 63.0
+margin_bottom = 20.0
+custom_fonts/font = ExtResource( 7 )
+text = "End Turn"
 
 [node name="DragLayer" type="CanvasLayer" parent="."]
 layer = 2

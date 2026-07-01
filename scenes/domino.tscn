@@ -30,8 +30,6 @@ extents = Vector2( 25, 16 )
 
 [sub_resource type="ShaderMaterial" id=4]
 shader = ExtResource( 2 )
-shader_param/outline_color = Color( 0, 1, 0, 1 )
-shader_param/is_active = 0.0
 
 [node name="Area2D" type="Area2D"]
 script = ExtResource( 4 )

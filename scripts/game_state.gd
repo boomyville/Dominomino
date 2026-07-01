@@ -2,7 +2,7 @@
 extends Node
 
 signal player_energy_changed(new_energy)
-signal player_combo_changed(new_combo)
+signal player_chain_changed(new_chain)
 signal player_hp_changed(new_hp)
 signal player_lives_changed(new_lives)
 
@@ -15,7 +15,7 @@ var player_max_hand_size: int = 0
 var player_draw_per_turn: int = 0
 var player_starting_draw: int = 0
 var current_player_energy: int = 10 setget set_player_energy
-var player_domino_combo: int = 0 setget set_player_combo
+var player_domino_chain: int = 0 setget set_player_chain
 
 func load_player(data: PlayerData) -> void:
 	player_current_hp = data.current_hp
@@ -30,30 +30,39 @@ func load_player(data: PlayerData) -> void:
 
 func set_player_energy(value: int) -> void:
 	current_player_energy = int(max(0, value))
+	emit_signal("player_energy_changed", current_player_energy)
 
 func modify_player_energy(amount: int) -> void:
 	current_player_energy = int(clamp(current_player_energy + amount, 0, player_max_energy))
 	emit_signal("player_energy_changed", current_player_energy)
 
-func set_player_combo(value: int) -> void:
-	player_domino_combo = int(max(0, value))
-	emit_signal("player_combo_changed", player_domino_combo)
+func set_player_chain(value: int) -> void:
+	player_domino_chain = int(max(0, value))
+	emit_signal("player_chain_changed", player_domino_chain)
 
 func set_starting_player_energy(amount: int) -> void:
 	self.current_player_energy = amount
+	print("Starting player energy set to: ", current_player_energy)
+	emit_signal("player_energy_changed", current_player_energy)
+
+
+func restore_energy_for_turn() -> void:
+	self.current_player_energy = int(clamp(current_player_energy + player_energy_per_turn, 0, player_max_energy))
 	emit_signal("player_energy_changed", current_player_energy)
 
 func spend_player_energy(amount: int) -> void:
 	self.current_player_energy = max(0, current_player_energy - amount)
+	print("Player energy spent: ", amount)
+	print("Remaining player energy: ", current_player_energy)
 	emit_signal("player_energy_changed", current_player_energy)
 
-func increment_combo() -> void:
-	self.player_domino_combo = player_domino_combo + 1
-	emit_signal("player_combo_changed", player_domino_combo)
+func increment_chain() -> void:
+	self.player_domino_chain = player_domino_chain + 1
+	emit_signal("player_chain_changed", player_domino_chain)
 
-func reset_combo() -> void:
-	self.player_domino_combo = 0
-	emit_signal("player_combo_changed", player_domino_combo)
+func reset_chain() -> void:
+	self.player_domino_chain = 0
+	emit_signal("player_chain_changed", player_domino_chain)
 
 # Base cost: sum of non-special pip values (unchanged, used as fallback)
 func calculate_domino_cost(left_pip: int, right_pip: int) -> int:
@@ -86,6 +95,3 @@ func lose_life(amount: int) -> void:
 	emit_signal("player_lives_changed", player_lives)
 	if player_lives <= 0:
 		pass # Should be game over trigger
-
-func restore_energy_for_turn() -> void:
-	self.current_player_energy = int(clamp(current_player_energy + player_energy_per_turn, 0, player_max_energy))

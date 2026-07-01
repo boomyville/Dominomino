@@ -178,7 +178,7 @@ func evaluate_candidate_placement(candidate: Area2D, start_x: int, start_y: int,
 
 			if match_mode == MatchMode.ANY_MATCH:
 				# Free placement — no pip restrictions, placement always valid.
-				# has_any_match = true whenever adjacent (for combo increment).
+				# has_any_match = true whenever adjacent (for chain increment).
 				# matched_reduction only increases when pip values actually match.
 				touched_board_dominoes[nb_domino] = true
 				total_contacts += 1
@@ -287,7 +287,16 @@ func highlight_preview(start_x: int, start_y: int, vertical: bool = false, candi
 	if candidate != null:
 		var eval = evaluate_candidate_placement(candidate, start_x, start_y, vertical)
 		pip_valid = eval.valid
-
+		
+		if pip_valid:
+			# Also check affordability before showing as valid
+			var cost = GameState.calculate_domino_cost_discounted(
+				candidate.left_pip_value,
+				candidate.right_pip_value,
+				eval.get("matched_reduction", 0)
+			)
+			if GameState.current_player_energy < cost:
+				pip_valid = false
 	var highlight_texture = TILE_PREVIEW if pip_valid else TILE_INVALID
 
 	for child in grid_container.get_children():

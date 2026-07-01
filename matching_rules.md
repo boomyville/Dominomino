@@ -2,7 +2,7 @@
 
 ## Overview
 
-Each domino occupies **2 cells** on the board. Every cell carries exactly **one pip value**. When a domino is placed adjacent to another, the pip values of touching cells are compared to determine validity, energy cost, and combo progression.
+Each domino occupies **2 cells** on the board. Every cell carries exactly **one pip value**. When a domino is placed adjacent to another, the pip values of touching cells are compared to determine validity, energy cost, and chain progression.
 
 ---
 
@@ -44,7 +44,7 @@ Final Cost = max(0, Base Cost − matched_reduction)
 
 ---
 
-## Combo
+## Chain
 
 - **Increment** by 1 each time a domino is placed adjacent to another (with at least one touching cell pair)
 - **Reset** to 0 when a domino is placed with no adjacent neighbours, or when a placement is cancelled
@@ -146,7 +146,7 @@ Free placement mode. A domino can be placed **anywhere** regardless of pip value
 1. No pip matching required — placement is always valid as long as cells are empty
 2. No contact limits — touch as many dominoes as you like
 3. Energy reduction **only applies when touching pip values happen to match**
-4. Combo still increments on any adjacency (even non-matching)
+4. Chain still increments on any adjacency (even non-matching)
 
 #### Placement Examples — ANY_MATCH
 
@@ -169,8 +169,8 @@ Free placement mode. A domino can be placed **anywhere** regardless of pip value
 | Board cell can be touched by >1 neighbour | ✗ | ✓ | ✓ |
 | Energy reduction on pip match | ✓ | ✓ | ✓ |
 | Energy reduction on pip mismatch | N/A (blocked) | N/A (blocked) | ✗ (no reduction) |
-| Combo on adjacency | ✓ | ✓ | ✓ |
-| Combo reset on isolated placement | ✓ | ✓ | ✓ |
+| Chain on adjacency | ✓ | ✓ | ✓ |
+| Chain reset on isolated placement | ✓ | ✓ | ✓ |
 
 ---
 

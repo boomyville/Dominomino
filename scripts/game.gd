@@ -5,8 +5,9 @@ onready var hand = $PlayerHandPosition/PlayerHand
 onready var ok_button = $UI/UIPosition/UIContainer/OKButton
 onready var undo_button = $UI/UIPosition/UIContainer/UndoButton
 onready var energy_label = $UI/EnergyPosition/Energy
-onready var combo_label = $UI/EnergyPosition/Combo
+onready var chain_label = $UI/EnergyPosition/Chain
 onready var settings_button = $UI/SettingsPosition/SettingsButton
+onready var end_turn_button = $UI/EndTurnPosition/EndTurnButton
 onready var rotate_button = $UI/UIPosition/UIContainer/RotateButton
 
 const SETTINGS_POPUP_SCENE = preload("res://scenes/settings.tscn")
@@ -32,10 +33,6 @@ var _last_placement_eval: Dictionary = {"valid": false, "matched_reduction": 0, 
 
 func _ready() -> void:
 	randomize()
-	prepare_combat_draw_pile()
-
-	GameState.load_player(player_data)     
-	draw_dominoes(GameState.player_starting_draw)
 
 	ok_button.connect("pressed", self, "_on_ok_pressed")
 	undo_button.connect("pressed", self, "_on_undo_pressed")
@@ -43,9 +40,15 @@ func _ready() -> void:
 	_toggle_verification_ui(false)
 
 	settings_button.connect("pressed", self, "_on_settings_pressed")
+	end_turn_button.connect("pressed", self, "_on_end_turn_pressed")
 
 	GameState.connect("player_energy_changed", self, "_on_energy_adjusted")
-	GameState.connect("player_combo_changed", self, "_on_combo_adjusted")
+	GameState.connect("player_chain_changed", self, "_on_chain_adjusted")
+
+	prepare_combat_draw_pile()
+
+	GameState.load_player(player_data)     
+	draw_dominoes(GameState.player_starting_draw)
 
 	_refresh_hand_playability()
 
@@ -165,6 +168,17 @@ func _try_place_active_domino() -> void:
 		_cancel_active_domino()
 		return
 
+	var eval = board.evaluate_candidate_placement(active_domino, gx, gy, vertical)
+	var cost = GameState.calculate_domino_cost_discounted(
+		active_domino.left_pip_value,
+		active_domino.right_pip_value,
+		eval.get("matched_reduction", 0)
+	)
+	if GameState.current_player_energy < cost:
+		board.clear_preview()
+		_cancel_active_domino()
+		return	
+
 	# Cache the evaluation result so _on_ok_pressed can use the exact discount
 	# that applied to this placement without re-scanning.
 	_last_placement_eval = board.evaluate_candidate_placement(active_domino, gx, gy, vertical)
@@ -233,8 +247,8 @@ func _cancel_active_domino() -> void:
 	# Refresh AFTER the domino is back in its hand slot so the loop sees it.
 	_refresh_domino_selection_visuals()
 
-	# Also reset combo — the player cancelled, no match was committed.
-	GameState.reset_combo()
+	# Also reset chain — the player cancelled, no match was committed.
+	GameState.reset_chain()
 
 func _sort_board_dominoes_by_y() -> void:
 	var dominoes = []
@@ -268,13 +282,18 @@ func _on_ok_pressed() -> void:
 		last_placed_domino.right_pip_value,
 		_last_placement_eval.get("matched_reduction", 0)
 	)
+
+	if GameState.current_player_energy < cost:
+		# Failsafe - should never happen if the hand playability logic is correct. 
+		return
+
 	GameState.spend_player_energy(cost)
 
-	# Update combo: increment if a pip-match occurred, reset if played isolated.
+	# Update chain: increment if a pip-match occurred, reset if played isolated.
 	if _last_placement_eval.get("has_any_match", false):
-		GameState.increment_combo()
+		GameState.increment_chain()
 	else:
-		GameState.reset_combo()
+		GameState.reset_chain()
 
 	_last_placement_eval = {"valid": false, "matched_reduction": 0, "has_any_match": false}
 
@@ -371,8 +390,8 @@ func _on_energy_adjusted(new_energy: int) -> void:
 	energy_label.text = str(new_energy)
 	_refresh_hand_playability()
 
-func _on_combo_adjusted(new_combo: int) -> void:
-	combo_label.text = str(new_combo)
+func _on_chain_adjusted(new_chain: int) -> void:
+	chain_label.text = str(new_chain)
 
 # ===================================================================================
 # Hand playability — determines which shader each hand domino gets.
@@ -396,25 +415,28 @@ func _refresh_hand_playability() -> void:
 		if domino == null or not domino.has_method("set_playability_visual"):
 			continue
 
-		# Always scan for a match opportunity first.
-		# MATCH_PLAYABLE (shader2) takes priority over FULL_COST_PLAYABLE (shader1)
-		# because a combo opportunity is the more specific/interesting state to show.
-		var has_affordable_match = _scan_board_for_match_placement(domino)
-		if has_affordable_match:
-			domino.set_playability_visual(domino.PlayabilityMode.MATCH_PLAYABLE)
-			continue
-
 		var full_cost = GameState.calculate_domino_cost(domino.left_pip_value, domino.right_pip_value)
 		var can_afford_full = GameState.current_player_energy >= full_cost
-		if can_afford_full:
-			domino.set_playability_visual(domino.PlayabilityMode.FULL_COST_PLAYABLE)
+
+		if not can_afford_full:
+			# Check if a match discount makes it affordable
+			var has_affordable_match = _scan_board_for_match_placement(domino, true)
+			if has_affordable_match:
+				domino.set_playability_visual(domino.PlayabilityMode.MATCH_PLAYABLE)
+			else:
+				domino.set_playability_visual(domino.PlayabilityMode.UNPLAYABLE)
 		else:
-			domino.set_playability_visual(domino.PlayabilityMode.UNPLAYABLE)
+			# Can afford full cost — check if a match exists anyway for shader2
+			var has_any_match = _scan_board_for_match_placement(domino, false)
+			if has_any_match:
+				domino.set_playability_visual(domino.PlayabilityMode.MATCH_PLAYABLE)
+			else:
+				domino.set_playability_visual(domino.PlayabilityMode.FULL_COST_PLAYABLE)
 
 # Tries all 4 rotations of the domino at every geometrically valid empty cell pair
 # on the board. Returns true as soon as one valid pip-matching placement is found
 # that the player can currently afford after the discount.
-func _scan_board_for_match_placement(domino) -> bool:
+func _scan_board_for_match_placement(domino, require_affordable: bool = false) -> bool:
 	var original_rotation = domino.rotation_step
 
 	for rot in range(4):
@@ -433,14 +455,17 @@ func _scan_board_for_match_placement(domino) -> bool:
 				if not eval.has_any_match:
 					continue
 
-				var discounted_cost = GameState.calculate_domino_cost_discounted(
-					domino.left_pip_value,
-					domino.right_pip_value,
-					eval.matched_reduction
-				)
-				if GameState.current_player_energy >= discounted_cost:
-					domino.rotation_step = original_rotation
-					return true
+				if require_affordable:
+					var discounted_cost = GameState.calculate_domino_cost_discounted(
+						domino.left_pip_value,
+						domino.right_pip_value,
+						eval.matched_reduction
+					)
+					if GameState.current_player_energy < discounted_cost:
+						continue
+
+				domino.rotation_step = original_rotation
+				return true
 
 	domino.rotation_step = original_rotation
 	return false
@@ -476,3 +501,12 @@ func _on_settings_pressed() -> void:
 	var popup_instance = SETTINGS_POPUP_SCENE.instance()
 	$UI.add_child(popup_instance)
 	popup_instance.popup_centered()
+
+func _on_end_turn_pressed() -> void:
+	# For testing, draw dominos and reset energy/chain.
+	# In a real game, this would trigger the enemy's turn and any end-of-turn
+	
+	draw_dominoes(GameState.player_draw_per_turn)
+	GameState.restore_energy_for_turn()
+	GameState.reset_chain()
+

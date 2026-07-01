@@ -155,25 +155,25 @@ func set_domino_data(new_data) -> void:
 # Primary entry point called by game.gd._refresh_hand_playability().
 # mode: PlayabilityMode enum value
 #   UNPLAYABLE          → no shader active (is_active = false on both)
-#   FULL_COST_PLAYABLE  → outline shader active, outline2 inactive
+#   FULL_COST_PLAYABLE  → show outline
 #   MATCH_PLAYABLE      → outline2 shader active, outline inactive
 func set_playability_visual(mode: int) -> void:
 	match mode:
 		PlayabilityMode.UNPLAYABLE:
 			if outline_sprite:
-				outline_sprite.material = _outline_mat
-				_outline_mat.set_shader_param("is_active", false)
+				outline_sprite.visible = false
+				_outline_mat2.set_shader_param("is_active", false)
 
 		PlayabilityMode.FULL_COST_PLAYABLE:
 			if outline_sprite:
-				outline_sprite.material = _outline_mat
-				_outline_mat.set_shader_param("is_active", true)
+				outline_sprite.visible = true
+				outline_sprite.material = null  # just show the raw red border texture
 				_outline_mat2.set_shader_param("is_active", false)
 
 		PlayabilityMode.MATCH_PLAYABLE:
 			if outline_sprite:
+				outline_sprite.visible = true
 				outline_sprite.material = _outline_mat2
-				_outline_mat.set_shader_param("is_active", false)
 				_outline_mat2.set_shader_param("is_active", true)
 
 # Legacy wrapper — kept so existing callsites in domino.gd._input_event still compile.
@@ -198,7 +198,8 @@ func _ready() -> void:
 	_outline_mat2.shader = OUTLINE_SHADER_2
 
 	if outline_sprite:
-		outline_sprite.material = _outline_mat
+		outline_sprite.visible = false
+		outline_sprite.material = _outline_mat2  # only mat2 still needs managing
 
 	if domino_data != null:
 		left_pip_value = domino_data.base_left_pip
@@ -249,6 +250,7 @@ func lock_to_board() -> void:
 	stop_drag()
 	current_status = StatusType.BOARD
 	if outline_sprite:
+		outline_sprite.visible = false
 		outline_sprite.material = null
 	input_pickable = false
 	z_as_relative = false
