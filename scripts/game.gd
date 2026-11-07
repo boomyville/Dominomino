@@ -4,8 +4,8 @@ onready var board = $GridPosition/Board
 onready var hand = $PlayerHandPosition/PlayerHand 
 onready var ok_button = $UI/UIPosition/UIContainer/OKButton
 onready var undo_button = $UI/UIPosition/UIContainer/UndoButton
-onready var energy_label = $UI/EnergyPosition/Energy
-onready var chain_label = $UI/EnergyPosition/Chain
+onready var energy_label = $UI/PlayerUI/Energy
+onready var chain_label = $UI/PlayerUI/Chain
 onready var settings_button = $UI/SettingsPosition/SettingsButton
 onready var end_turn_button = $UI/EndTurnPosition/EndTurnButton
 onready var rotate_button = $UI/UIPosition/UIContainer/RotateButton
@@ -13,8 +13,10 @@ onready var rotate_button = $UI/UIPosition/UIContainer/RotateButton
 const SETTINGS_POPUP_SCENE = preload("res://scenes/settings.tscn")
 
 enum PlayState { IDLE, DRAGGING, VERIFYING, PROCESSING, REPOSITIONING }
+enum TurnPhase { PLAYER_TURN, ENEMY_TURN, RESOLUTION }
 
 export var player_data: Resource  # This is assigned in the editor
+export var enemy_data: Resource 
 
 var player_draw_pile: Array = []
 var player_discard_pile: Array = []
@@ -26,6 +28,7 @@ var last_placed_domino = null
 var last_placed_origin = Vector2.ZERO
 var last_placed_slot = null
 var domino_snap_offset: Vector2 = Vector2.ZERO
+var current_phase = TurnPhase.PLAYER_TURN
 
 # Cached result from the last evaluate_candidate_placement call so _on_ok_pressed
 # can apply the correct discounted cost without re-scanning the board.
@@ -45,9 +48,14 @@ func _ready() -> void:
 	GameState.connect("player_energy_changed", self, "_on_energy_adjusted")
 	GameState.connect("player_chain_changed", self, "_on_chain_adjusted")
 
+	EnemyState.connect("enemy_energy_changed", self, "_on_enemy_energy_adjusted")
+	EnemyState.connect("enemy_chain_changed", self, "_on_enemy_chain_adjusted")
+	# EnemyState.connect("enemy_defeated", self, "_on_enemy_defeated")
+
 	prepare_combat_draw_pile()
 
 	GameState.load_player(player_data)     
+	EnemyState.load_enemy(enemy_data)
 	draw_dominoes(GameState.player_starting_draw)
 
 	_refresh_hand_playability()
@@ -503,10 +511,38 @@ func _on_settings_pressed() -> void:
 	popup_instance.popup_centered()
 
 func _on_end_turn_pressed() -> void:
+	if current_phase != TurnPhase.PLAYER_TURN:
+		return
+	current_phase = TurnPhase.ENEMY_TURN
+	_begin_enemy_turn()
 	# For testing, draw dominos and reset energy/chain.
 	# In a real game, this would trigger the enemy's turn and any end-of-turn
 	
-	draw_dominoes(GameState.player_draw_per_turn)
-	GameState.restore_energy_for_turn()
-	GameState.reset_chain()
+	#draw_dominoes(GameState.player_draw_per_turn)
+	#GameState.restore_energy_for_turn()
+	#GameState.reset_chain()
 
+
+func _begin_enemy_turn() -> void:
+	# disable player input
+	_toggle_player_input(false)
+	# enemy draws, acts, etc — stubbed for now
+	yield(get_tree().create_timer(1.0), "timeout")
+	_end_enemy_turn()
+
+func _end_enemy_turn() -> void:
+	current_phase = TurnPhase.PLAYER_TURN
+	_toggle_player_input(true)
+	GameState.restore_energy_for_turn()
+	draw_dominoes(GameState.player_draw_per_turn)
+	_refresh_hand_playability()
+
+func _toggle_player_input(enabled: bool) -> void:
+	# prevent clicking dominoes during enemy turn
+	for slot in hand.get_children():
+		if slot.get_child_count() > 0:
+			slot.get_child(0).input_pickable = enabled
+
+func _on_enemy_defeated() -> void:
+	print("Enemy defeated!")
+	pass  # TODO: reward screen, next encounter

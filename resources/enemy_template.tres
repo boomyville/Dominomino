@@ -1,0 +1,22 @@
+[gd_resource type="Resource" load_steps=5 format=2]
+
+[ext_resource path="res://scripts/enemy_data.gd" type="Script" id=1]
+[ext_resource path="res://resources/skill_domino_data/defend.tres" type="Resource" id=2]
+[ext_resource path="res://resources/attack_domino_data/strike.tres" type="Resource" id=3]
+[ext_resource path="res://resources/template_domino.tres" type="Resource" id=4]
+
+[resource]
+script = ExtResource( 1 )
+player_name = "Enemy"
+max_hp = 35
+current_hp = 35
+lives = 3
+starting_energy = 6
+max_energy = 6
+energy_per_turn = 6
+max_hand_size = 6
+draw_per_turn = 2
+starting_draw = 4
+stack = [ ExtResource( 3 ), ExtResource( 3 ), ExtResource( 3 ), ExtResource( 3 ), ExtResource( 2 ), ExtResource( 2 ), ExtResource( 2 ), ExtResource( 4 ) ]
+equipped_items = [  ]
+inventory = [  ]

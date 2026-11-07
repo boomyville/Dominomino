@@ -15,12 +15,18 @@ _global_script_classes=[ {
 "path": "res://scripts/domino_data.gd"
 }, {
 "base": "Resource",
+"class": "EnemyData",
+"language": "GDScript",
+"path": "res://scripts/enemy_data.gd"
+}, {
+"base": "Resource",
 "class": "PlayerData",
 "language": "GDScript",
 "path": "res://scripts/player_data.gd"
 } ]
 _global_script_class_icons={
 "DominoData": "",
+"EnemyData": "",
 "PlayerData": ""
 }
 
@@ -33,6 +39,7 @@ config/icon="res://icon.png"
 [autoload]
 
 GameState="*res://scripts/game_state.gd"
+EnemyState="*res://scripts/enemy_state.gd"
 Settings="*res://scripts/global_settings.gd"
 
 [display]

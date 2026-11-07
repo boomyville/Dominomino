@@ -1,14 +1,16 @@
-[gd_scene load_steps=6 format=2]
+[gd_scene load_steps=7 format=2]
 
 [ext_resource path="res://scripts/game.gd" type="Script" id=1]
 [ext_resource path="res://scenes/board.tscn" type="PackedScene" id=2]
 [ext_resource path="res://scenes/player_hand.tscn" type="PackedScene" id=3]
 [ext_resource path="res://resources/player_template.tres" type="Resource" id=4]
+[ext_resource path="res://resources/enemy_template.tres" type="Resource" id=5]
 [ext_resource path="res://fonts/MicroWhite.fnt" type="BitmapFont" id=7]
 
 [node name="Node2D" type="Node2D"]
 script = ExtResource( 1 )
 player_data = ExtResource( 4 )
+enemy_data = ExtResource( 5 )
 
 [node name="GridPosition" type="Position2D" parent="."]
 position = Vector2( 24, 24 )
@@ -55,10 +57,10 @@ margin_bottom = 40.0
 custom_fonts/font = ExtResource( 7 )
 text = "Rotate"
 
-[node name="EnergyPosition" type="Position2D" parent="UI"]
+[node name="PlayerUI" type="Position2D" parent="UI"]
 position = Vector2( 72, 48 )
 
-[node name="Energy" type="Label" parent="UI/EnergyPosition"]
+[node name="Energy" type="Label" parent="UI/PlayerUI"]
 margin_left = 505.0
 margin_top = -3.0
 margin_right = 545.0
@@ -68,7 +70,7 @@ custom_fonts/font = ExtResource( 7 )
 text = "0"
 align = 2
 
-[node name="Chain" type="Label" parent="UI/EnergyPosition"]
+[node name="Chain" type="Label" parent="UI/PlayerUI"]
 margin_left = 505.0
 margin_top = 15.0
 margin_right = 545.0
@@ -77,6 +79,8 @@ rect_pivot_offset = Vector2( 17, 2 )
 custom_fonts/font = ExtResource( 7 )
 text = "0"
 align = 2
+
+[node name="EnemyUI" type="Position2D" parent="UI"]
 
 [node name="SettingsPosition" type="Position2D" parent="UI"]
 position = Vector2( 557, 18 )
@@ -95,6 +99,8 @@ margin_right = 63.0
 margin_bottom = 20.0
 custom_fonts/font = ExtResource( 7 )
 text = "End Turn"
+
+[node name="OtherUI" type="Position2D" parent="UI"]
 
 [node name="DragLayer" type="CanvasLayer" parent="."]
 layer = 2
