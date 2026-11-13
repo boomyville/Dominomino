@@ -36,7 +36,7 @@ button:active,button.solid{background:var(--fg);color:var(--bg)}
 @keyframes in{from{transform:translateX(-140px);opacity:0}}
 .d{position:relative}
 .slot.in{animation:in .3s ease-out}
-.play .d::after{content:'';position:absolute;inset:-7px;padding:2px;pointer-events:none;background:conic-gradient(from var(--a),var(--fg) 0 30%,transparent 30% 50%,var(--fg) 50% 80%,transparent 80%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;animation:spin 2.4s linear infinite}
+.play .d::after{content:'';position:absolute;inset:-7px;padding:2px;pointer-events:none;background:conic-gradient(from var(--a),var(--fg) 0 64%,transparent 64% 50%,var(--fg) 50% 80%,transparent 80%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;animation:spin 2.4s linear infinite}
 #reset{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);display:none}
 #pv{position:absolute;left:12px;top:62px;width:220px;max-width:calc(100% - 24px);box-sizing:border-box;padding:12px;border:2px solid var(--fg);background:var(--bg);display:none;flex-direction:column;gap:6px;pointer-events:none}
 #pv.on{display:flex}
@@ -81,6 +81,12 @@ button:active,button.solid{background:var(--fg);color:var(--bg)}
 #pgrid .card small,#pgrid button small{display:block}
 html,body{touch-action:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 @supports (height:100dvh){html,body{height:100dvh}}
+#pv{opacity:.3}
+.slot{height:auto;grid-template-rows:64px auto}
+.cap{display:flex;flex-wrap:wrap;justify-content:center;gap:0 5px;width:72px;margin-top:-6px;font-size:11px;font-weight:700;line-height:1.2;pointer-events:none}
+.cap .x{color:#d00}
+#toast.blink{animation:tb 1.2s steps(1) 1}
+@keyframes tb{0%{opacity:1}17%{opacity:0}33%{opacity:1}50%{opacity:0}67%{opacity:1}83%{opacity:0}100%{opacity:1}}
 </style></head><body>
 <div id="stage">
   <canvas id="cv"></canvas>
@@ -106,7 +112,9 @@ const PIPS=[[],[4],[0,8],[0,4,8],[0,2,6,8],[0,2,4,6,8],[0,2,3,5,6,8]];
 const $=s=>document.querySelector(s),cv=$('#cv'),cx=cv.getContext('2d'),tray=$('#tray'),ghost=$('#ghost');
 let hand=[],placed=[],occ=new Map(),sel=-1,pending=null,drag=null,pdrag=null,pan=null,st=null,energy=10,stat=newStat(),ended=0,uid=0,lastRot=0,lives=3,busy=0,playedTurn=0,flashT=-9e9,lastPlay=performance.now(),fresh=-1,reason='',swing=null,deckDraw=[],deckDisc=[],pl=newPl(),foe=makeFoe(1),floats=[],battleNo=1,collection=[],bat={played:0,hpLost:0,turn:1};
 const CH={p:{x:14,y:8},c:{x:3,y:9}},chr=new Map(),SW=480;for(const w in CH)for(let i=0;i<3;i++)for(let j=0;j<3;j++)chr.set((CH[w].x+i)+','+(CH[w].y+j),w);
-const MAXE=10;
+const MAXE=10,MAXH=12;let lastFull=-9e9;
+/* the hand holds at most MAXH dominoes: extra draws are skipped and a message flashes briefly */
+function handFull(){const n=performance.now();if(n-lastFull<900)return;lastFull=n;toast('Hand size is maxed');const e=$('#toast');e.classList.remove('blink');void e.offsetWidth;e.classList.add('blink')}
 let W,H,dpr=1,S=1,px=0,py=0,fg='#000',bg='#fff',cl=0,ct=0,first=1,hw,hh,ox,oy;
 /* 80 dominoes (+ Garbage). Effect size comes from the pip total s (0..12): bigger pips, bigger effect.
    X(kind,a,b) is round(a*s+b). r = rarity (c common, u uncommon, r rare), c = play condition (see CD). */
@@ -205,7 +213,7 @@ function randType(){const x=Math.random(),r=x<.6?'c':x<.9?'u':'r',a=byR[r];retur
 const newDomino=()=>({a:rpip(),b:rpip(),t:randType(),ang:0}),garb=()=>({a:0,b:0,t:GARB,ang:0});
 /* collection = every domino you own. Each battle the stack is a shuffled copy of it. Played dominoes stay on the board and discarded ones stay in the discard pile: neither comes back during the battle, so you can run out. */
 const starterCollection=()=>TY.slice(0,20).map((t,i)=>({a:rpip(),b:rpip(),t:i}));
-function drawOne(){if(!deckDraw.length)return 0;const d=deckDraw.pop();d.ang=0;hand.push(d);stat.drawn++;return 1}
+function drawOne(){if(hand.length>=MAXH){handFull();return 0}if(!deckDraw.length)return 0;const d=deckDraw.pop();d.ang=0;hand.push(d);stat.drawn++;return 1}
 function draw(n){let k=0;for(let i=0;i<n;i++)k+=drawOne();return k}
 function startBattle(){placed=[];occ=new Map();energy=MAXE;playedTurn=0;sel=-1;pending=null;drag=null;fresh=-1;swing=null;floats=[];bat={played:0,hpLost:0,turn:1};
   deckDraw=shuffle(collection.map(d=>({a:d.a,b:d.b,t:d.t,ang:0})));deckDisc=[];hand=[];draw(6);newIntent();busy=0;lastPlay=performance.now()}
@@ -282,7 +290,7 @@ function render(){
   tray.innerHTML='';pc.clear();
   hand.forEach((d,i)=>{const s=document.createElement('div');s.className='slot'+(i===sel?' sel':'')+(!busy&&!pending&&!ended&&canPlay(d)?' play':'')+(i===fresh?' in':'');
     if((pending&&pending.i===i)||(drag&&drag.i===i))s.style.visibility='hidden';
-    s.innerHTML=dhtml(d);s.onpointerdown=e=>{e.preventDefault();if(st||drag||ended||busy)return;st={i,x:e.clientX,y:e.clientY,el:s,pid:e.pointerId};try{document.body.setPointerCapture(e.pointerId)}catch(_){}};tray.append(s)});
+    s.innerHTML=dhtml(d)+'<div class="cap">'+capHtml(d)+'</div>';s.onpointerdown=e=>{e.preventDefault();if(st||drag||ended||busy)return;st={i,x:e.clientX,y:e.clientY,el:s,pid:e.pointerId};try{document.body.setPointerCapture(e.pointerId)}catch(_){}};tray.append(s)});
   tray.classList.toggle('lock',!!pending||ended||busy);$('#actions').classList.toggle('on',!!pending);
   $('#hint').textContent=busy===2?'Resolving effects':busy?'Computer turn':pending?'Tap the domino or press OK to place it':drag?'Right-click or tap with a second finger to rotate':sel>=0?'Tap to rotate. Drag onto the board.':'Select a domino';hud()}
 function select(i){sel=i;render()}
@@ -371,6 +379,14 @@ const CD={
 const condOk=d=>{const c=CD[TY[d.t].c];return !c||c.f(d)};
 function checkP(m){const d=hand[m.i];if(d){const c=CD[TY[d.t].c];if(c&&!c.f(d))return{ok:0,why:TY[d.t].c==='never'?'Garbage cannot be played':'Needs: '+c.t}}return check(m)}
 const stx=o=>o.fury>0?'Fury '+o.fury:o.fury<0?'Impair '+(-o.fury):'';
+const EM={dmg:'⚔️',hit:'⚔️',shield:'🛡️',maxs:'🏰',draw:'🃏',discR:'🗑️',discP:'🗑️',tutor:'🔍',power:'💪',boost:'⚡',heal:'❤️',rerollA:'🎲',rerollP:'🎲',fury:'🔥',impS:'💤',impE:'📉',selfdmg:'🩸',gen:'🆕',life:'💖'};
+function capHtml(d){const def=TY[d.t],s=d.a+d.b,bo=hasAtk(def)?pl.boost:0;
+  if(def.r==='g')return '<span class="x">✕</span>';
+  const bad=!condOk(d);
+  const chips=def.fx.map(e=>{const v=fxVal(e,s),n=(e.k==='dmg'||e.k==='hit')?Math.max(0,v+pl.pow+bo+pl.fury):v;
+    return {em:EM[e.k],num:e.v?(e.k==='hit'?n+'×'+e.t:''+n):''}});
+  if(bad)return `<span><span class="x">✕</span>${chips[0]?chips[0].num:''}</span>`;
+  return chips.map(c=>`<span>${c.em}${c.num}</span>`).join('')}
 function fxLines(d){const s=d.a+d.b,def=TY[d.t],bo=hasAtk(def)?pl.boost:0;
   return def.fx.map(e=>{const v=fxVal(e,s),n=Math.max(0,v+pl.pow+bo+pl.fury);switch(e.k){
     case 'dmg':return `Deal ${n} damage`;
@@ -399,7 +415,7 @@ function pv(){const d=hand[sel],e=$('#pv'),on=sel>=0&&!!d&&!ended&&!busy;e.class
 
 /* ---- combat ---- */
 function newPl(){return{hp:50,max:50,sh:0,maxSh:9,pow:0,boost:0,fury:0}}
-function makeFoe(n){const hp=70+(n-1)*30+(n-1)*(n-1)*5;return{hp,max:hp,sh:0,fury:0,intent:[],lv:n,name:['Gruff Hare','Bone Rabbit','Iron Hare','Void Rabbit','Warlord Hare'][n-1]||'Hare Lord '+n}}
+function makeFoe(n){const hp=70+(n-1)*10+(n-1)*(n-1)*5;return{hp,max:hp,sh:0,fury:0,intent:[],lv:n,name:['Gruff Hare','Bone Rabbit','Iron Hare','Void Rabbit','Warlord Hare'][n-1]||'Hare Lord '+n}}
 const tick=o=>{o.fury+=o.fury>0?-1:o.fury<0?1:0};
 function fl(w,t){floats.push({w,t,t0:performance.now(),o:(Math.random()-.5)*50})}
 function flashScreen(){flashT=performance.now();const e=$('#flashov');e.classList.remove('on');void e.offsetWidth;e.classList.add('on')}
@@ -419,9 +435,10 @@ const itx=i=>i.k==='atk'?'Attack '+Math.max(0,i.v+foe.fury):i.k==='lifeatk'?'Att
 
 const cardHtml=d=>{const def=TY[d.t],c=CD[def.c],l=fxLines(d);return `<div class="d">${half(d.a)}${half(d.b)}</div><b>${def.n}</b><small>${RN[def.r]}</small><small>${l.join('. ')}${l.length?'.':''}</small>${c?`<small><i>Only if ${c.t}</i></small>`:''}`};
 /* choose one domino from a list; resolves with its index */
-function pick(title,sub,list){return new Promise(res=>{
+function pick(title,sub,list,skip){return new Promise(res=>{
   $('#ptitle').textContent=title;$('#psub').textContent=sub;const g=$('#pgrid');g.innerHTML='';
   list.forEach((d,i)=>{const b=document.createElement('button');b.innerHTML=cardHtml(d);b.onclick=()=>{$('#pick').classList.remove('on');res(i)};g.append(b)});
+  if(skip){const s=document.createElement('button');s.textContent=skip;s.className='solid';s.style.gridColumn='1/-1';s.onclick=()=>{$('#pick').classList.remove('on');res(-1)};g.append(s)}
   $('#pick').classList.add('on')})}
 /* show dominoes with a single continue button */
 function showCards(title,sub,list,btn){return new Promise(res=>{
@@ -440,7 +457,7 @@ async function runFx(d){const s=d.a+d.b,def=TY[d.t],atk=hasAtk(def),bo=atk?pl.bo
     else if(e.k==='discR'){for(let i=0;i<v&&hand.length;i++)deckDisc.push(hand.splice(Math.random()*hand.length|0,1)[0])}
     else if(e.k==='discP'){for(let i=0;i<v&&hand.length;i++){const c=await pick('Discard a domino','Choose a domino from your hand to discard.',hand);deckDisc.push(hand.splice(c,1)[0]);render()}}
     else if(e.k==='tutor'){
-      if(!deckDraw.length)toast('Your stack is empty');
+      if(!deckDraw.length)toast('Your stack is empty');else if(hand.length>=MAXH)handFull();
       else{const pool=deckDraw.map((x,i)=>({x,i})).sort((p,q)=>TY[p.x.t].n.localeCompare(TY[q.x.t].n));
         const c=await pick('Find a domino','Choose a domino from your stack to add to your hand.',pool.map(p=>p.x));
         const got=deckDraw.splice(pool[c].i,1)[0];got.ang=0;hand.push(got);fresh=hand.length-1;render();await sleep(300);fresh=-1}}
@@ -456,7 +473,7 @@ async function runFx(d){const s=d.a+d.b,def=TY[d.t],atk=hasAtk(def),bo=atk?pl.bo
     else if(e.k==='gen'){for(let i=0;i<v;i++)deckDraw.splice(Math.random()*(deckDraw.length+1)|0,0,newDomino());fl('p','+'+v+' in stack')}
     else if(e.k==='life'){lives+=v;fl('p','+'+v+' lives')}
     render();await sleep(160)}
-  if(atk)tick(pl)}
+  if(atk){tick(pl);pl.boost=0}}
 
 /* ---- character tags (HP, shield, status, intent) and floating numbers ---- */
 function tag(X,Y,lines){cx.font='700 12px Archivo,system-ui,sans-serif';const lh=15,w=Math.max(...lines.map(l=>cx.measureText(l).width))+16,h=lines.length*lh+8,x=Math.max(4,Math.min(W-w-4,Math.round(X-w/2))),y=Math.max(4,Math.round(Y-h));
@@ -487,10 +504,11 @@ function cpuPlay(){const rare=Math.random()<.12,own=placed.some(m=>m.cpu);
     if(!check(m,1,'c').ok)continue;
     const id=++uid;cs.forEach(([x,y],k)=>occ.set(x+','+y,{id,o:'c',pip:k?m.b:m.a}));placed.push({...m,born:performance.now()});stat.cpu++;swing={who:'c',t0:performance.now()};return 1}
   return 0}
-async function battleWon(){busy=3;stat.battles++;render();
-  const gain=[0,1,2].map(()=>newDomino());gain.forEach(d=>collection.push({a:d.a,b:d.b,t:d.t}));
-  await showCards('Victory!','You healed to full HP. These 3 dominoes were added to your stack for the next battle.',gain,'Next battle');
-  battleNo++;pl=newPl();foe=makeFoe(battleNo);startBattle();render();return stuckCheck()}
+async function battleWon(){busy=3;stat.battles++;pl=newPl();render();
+  const opts=[0,1,2].map(()=>newDomino());
+  const c=await pick('Victory!','You healed to full HP and every status was cleared. Choose a domino to add to your stack, or skip.',opts,'Skip');
+  if(c>=0){const d=opts[c];collection.push({a:d.a,b:d.b,t:d.t})}
+  battleNo++;foe=makeFoe(battleNo);startBattle();render();return stuckCheck()}
 async function endTurn(){if(pending||ended||busy)return;busy=1;sel=-1;stat.wasted+=energy;energy=0;render();
   if(!playedTurn){flashScreen();lives--;stat.lost++;render();await sleep(1100);if(lives<=0)return finish('You ran out of lives')}
   foe.sh=0;
@@ -504,7 +522,7 @@ async function endTurn(){if(pending||ended||busy)return;busy=1;sel=-1;stat.waste
   await sleep(450);stat.turn++;bat.turn++;energy=MAXE;playedTurn=0;if(pl.sh>pl.maxSh){pl.sh=pl.maxSh;fl('p','Excess shield lost')}newIntent();render();
   for(let i=0;i<4;i++){if(drawOne())fresh=hand.length-1;render();await sleep(380)}
   fresh=-1;busy=0;lastPlay=performance.now();
-  if(hand.length>=12)return finish('Your hand reached 12 dominoes');render();return stuckCheck()}
+  render();return stuckCheck()}
 /* At the start of a turn (and a battle), if nothing in hand can be played you lose a life and the turn passes. */
 async function stuckCheck(){if(ended||busy||pending||hand.some(d=>canPlay(d)))return;busy=1;toast('No playable dominoes: you lose a life');render();await sleep(1300);busy=0;return endTurn()}
 function finish(r){reason=r;ended=1;busy=0;$('#otitle').textContent=/^Victory/.test(r)?'Victory':'Game over';render()}
