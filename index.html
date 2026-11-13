@@ -63,7 +63,7 @@ button:active,button.solid{background:var(--fg);color:var(--bg)}
 #over.on{display:grid}
 #over h2{font-size:28px;margin:0 0 10px}
 #pv{gap:3px}
-@media (max-width:700px){#pv{top:auto;bottom:124px}}
+@media (max-width:700px){#pv{top:auto;bottom:124px;width:176px;padding:8px;font-size:13px}#pv b{font-size:15px}#pv .d{width:72px;height:36px}#pv .h i{width:5px;height:5px}}
 #pick{position:absolute;inset:0;display:none;place-items:center;background:color-mix(in srgb,var(--bg) 75%,transparent);text-align:center;z-index:5}
 #pick.on{display:grid}
 #pick>div{border:2px solid var(--fg);background:var(--bg);padding:16px;width:min(94%,540px);max-height:88%;overflow:auto;box-sizing:border-box}
@@ -74,6 +74,13 @@ button:active,button.solid{background:var(--fg);color:var(--bg)}
 #pgrid .d{transition:none}
 #pgrid b{font-size:14px}
 #pgrid small{font-size:12px;line-height:1.25;opacity:.85}
+#flashov{position:absolute;inset:0;pointer-events:none;background:var(--fg);opacity:0;z-index:4}
+#flashov.on{animation:fo 1.05s steps(1) 1}
+@keyframes fo{0%{opacity:.45}17%{opacity:0}33%{opacity:.45}50%{opacity:0}67%{opacity:.45}83%{opacity:0}100%{opacity:0}}
+#pgrid .card{border:2px solid var(--fg);padding:10px 8px;display:flex;flex-direction:column;align-items:center;gap:6px}
+#pgrid .card small,#pgrid button small{display:block}
+html,body{touch-action:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+@supports (height:100dvh){html,body{height:100dvh}}
 </style></head><body>
 <div id="stage">
   <canvas id="cv"></canvas>
@@ -82,6 +89,7 @@ button:active,button.solid{background:var(--fg);color:var(--bg)}
     <div class="r"><div id="energy"></div><div class="z"><button id="zo" aria-label="Zoom out">−</button><button id="zi" aria-label="Zoom in">+</button><button id="fit">Fit</button></div></div>
   </div>
   <div id="toast"></div>
+  <div id="flashov"></div>
   <div id="pv"></div>
   <div id="actions"><button id="cancel">Cancel</button><button id="ok" class="solid">OK</button></div>
   <div id="stats"></div>
@@ -96,39 +104,112 @@ button:active,button.solid{background:var(--fg);color:var(--bg)}
 const TW=64,TH=32,N=20,T=9,LIFT=18,PLACED=5;
 const PIPS=[[],[4],[0,8],[0,4,8],[0,2,6,8],[0,2,4,6,8],[0,2,3,5,6,8]];
 const $=s=>document.querySelector(s),cv=$('#cv'),cx=cv.getContext('2d'),tray=$('#tray'),ghost=$('#ghost');
-let hand=[],placed=[],occ=new Map(),sel=-1,pending=null,drag=null,pdrag=null,pan=null,st=null,energy=10,stat=newStat(),ended=0,uid=0,lastRot=0,lives=3,busy=0,playedTurn=0,flashT=-9e9,lastPlay=performance.now(),fresh=-1,reason='',swing=null,deckDraw=[],deckDisc=[],pl={hp:50,max:50,sh:0,maxSh:9,pow:0,boost:0},foe={hp:70,max:70,sh:0,intent:[]},floats=[];
+let hand=[],placed=[],occ=new Map(),sel=-1,pending=null,drag=null,pdrag=null,pan=null,st=null,energy=10,stat=newStat(),ended=0,uid=0,lastRot=0,lives=3,busy=0,playedTurn=0,flashT=-9e9,lastPlay=performance.now(),fresh=-1,reason='',swing=null,deckDraw=[],deckDisc=[],pl=newPl(),foe=makeFoe(1),floats=[],battleNo=1,collection=[],bat={played:0,hpLost:0,turn:1};
 const CH={p:{x:14,y:8},c:{x:3,y:9}},chr=new Map(),SW=480;for(const w in CH)for(let i=0;i<3;i++)for(let j=0;j<3;j++)chr.set((CH[w].x+i)+','+(CH[w].y+j),w);
 const MAXE=10;
 let W,H,dpr=1,S=1,px=0,py=0,fg='#000',bg='#fff',cl=0,ct=0,first=1,hw,hh,ox,oy;
-/* 20 domino skills. v(s) gives the effect size from the pip total s (0..12): bigger pips, bigger effect. */
+/* 80 dominoes (+ Garbage). Effect size comes from the pip total s (0..12): bigger pips, bigger effect.
+   X(kind,a,b) is round(a*s+b). r = rarity (c common, u uncommon, r rare), c = play condition (see CD). */
+const X=(k,a,b,t)=>({k,t,v:s=>Math.max(1,Math.round(a*s+b))}),Z=k=>({k}),D=(n,r,c,fx)=>({n,r,c,fx});
 const TY=[
- {n:'Slash',fx:[{k:'dmg',v:s=>s+2}]},
- {n:'Twin Fang',fx:[{k:'hit',t:2,v:s=>Math.ceil(s/2)+1}]},
- {n:'Triple Thorn',fx:[{k:'hit',t:3,v:s=>Math.floor(s/3)+1}]},
- {n:'Iron Guard',fx:[{k:'shield',v:s=>s+3}]},
- {n:'Fortify',fx:[{k:'maxs',v:s=>1+Math.floor(s/4)},{k:'shield',v:s=>Math.ceil(s/2)+1}]},
- {n:'Parry',fx:[{k:'shield',v:s=>s+1},{k:'draw',v:s=>1}]},
- {n:'Quick Study',fx:[{k:'draw',v:s=>1+Math.floor(s/5)}]},
- {n:'Reckless Strike',fx:[{k:'dmg',v:s=>s+4},{k:'discR',v:s=>1}]},
- {n:'Gambit',fx:[{k:'dmg',v:s=>2*s+1},{k:'discP',v:s=>1}]},
- {n:'Scout',fx:[{k:'tutor',v:s=>1},{k:'shield',v:s=>Math.floor(s/3)+1}]},
- {n:'War Cry',fx:[{k:'power',v:s=>1+Math.floor(s/4)}]},
- {n:'Sharpen',fx:[{k:'boost',v:s=>s+2}]},
- {n:'Mend',fx:[{k:'heal',v:s=>s+2}]},
- {n:'Chaos Dice',fx:[{k:'rerollA'},{k:'shield',v:s=>Math.ceil(s/2)+2}]},
- {n:'Loaded Dice',fx:[{k:'rerollP'},{k:'draw',v:s=>1}]},
- {n:'Second Wind',fx:[{k:'heal',v:s=>Math.ceil(s/2)+1},{k:'draw',v:s=>1}]},
- {n:'Battle Trance',fx:[{k:'dmg',v:s=>Math.ceil(s/2)+1},{k:'power',v:s=>1}]},
- {n:'Shield Bash',fx:[{k:'dmg',v:s=>Math.ceil(s/2)+2},{k:'shield',v:s=>Math.ceil(s/2)+2}]},
- {n:'Precision',fx:[{k:'boost',v:s=>Math.ceil(s/2)+2},{k:'draw',v:s=>1}]},
- {n:'Lifesteal',fx:[{k:'dmg',v:s=>Math.ceil(s/2)+2},{k:'heal',v:s=>Math.floor(s/3)+1}]}
+ /* starter set (0-19) */
+ D('Slash','c',0,[{k:'dmg',v:s=>s+2}]),
+ D('Twin Fang','c',0,[{k:'hit',t:2,v:s=>Math.ceil(s/2)+1}]),
+ D('Triple Thorn','u',0,[{k:'hit',t:3,v:s=>Math.floor(s/3)+1}]),
+ D('Iron Guard','c',0,[{k:'shield',v:s=>s+3}]),
+ D('Fortify','u',0,[{k:'maxs',v:s=>1+Math.floor(s/4)},{k:'shield',v:s=>Math.ceil(s/2)+1}]),
+ D('Parry','c',0,[{k:'shield',v:s=>s+1},{k:'draw',v:s=>1}]),
+ D('Quick Study','c',0,[{k:'draw',v:s=>1+Math.floor(s/5)}]),
+ D('Reckless Strike','c',0,[{k:'dmg',v:s=>s+4},{k:'discR',v:s=>1}]),
+ D('Gambit','u',0,[{k:'dmg',v:s=>2*s+1},{k:'discP',v:s=>1}]),
+ D('Scout','u',0,[{k:'tutor',v:s=>1},{k:'shield',v:s=>Math.floor(s/3)+1}]),
+ D('War Cry','u',0,[{k:'power',v:s=>1+Math.floor(s/4)}]),
+ D('Sharpen','c',0,[{k:'boost',v:s=>s+2}]),
+ D('Mend','c',0,[{k:'heal',v:s=>s+2}]),
+ D('Chaos Dice','u',0,[{k:'rerollA'},{k:'shield',v:s=>Math.ceil(s/2)+2}]),
+ D('Loaded Dice','u',0,[{k:'rerollP'},{k:'draw',v:s=>1}]),
+ D('Second Wind','c',0,[{k:'heal',v:s=>Math.ceil(s/2)+1},{k:'draw',v:s=>1}]),
+ D('Battle Trance','u',0,[{k:'dmg',v:s=>Math.ceil(s/2)+1},{k:'power',v:s=>1}]),
+ D('Shield Bash','c',0,[{k:'dmg',v:s=>Math.ceil(s/2)+2},{k:'shield',v:s=>Math.ceil(s/2)+2}]),
+ D('Precision','u',0,[{k:'boost',v:s=>Math.ceil(s/2)+2},{k:'draw',v:s=>1}]),
+ D('Lifesteal','u',0,[{k:'dmg',v:s=>Math.ceil(s/2)+2},{k:'heal',v:s=>Math.floor(s/3)+1}]),
+ /* common (20-43) */
+ D('Rage Up','c',0,[X('fury',.5,1)]),
+ D('Sting','c',0,[X('impE',.5,1)]),
+ D('Blood Ward','c',0,[X('shield',1.2,4),X('selfdmg',0,2)]),
+ D('Blood Rage','c',0,[X('fury',.6,2),X('selfdmg',0,2)]),
+ D('Cheap Shot','c','first',[X('dmg',1.2,4)]),
+ D('Opening Guard','c','first',[X('shield',1.4,4)]),
+ D('Desperate Swing','c','lowHp',[X('dmg',1.6,3)]),
+ D('Second Skin','c','noShield',[X('shield',1.4,5)]),
+ D('Light Hands','c','handLe3',[X('draw',0,2)]),
+ D('Clean Hands','c','noSix',[X('dmg',1.3,4)]),
+ D('Full Grip','c','hand6',[X('dmg',1.2,4),X('shield',.5,2)]),
+ D('Steady Guard','c','noAtk',[X('shield',1.3,4),X('heal',.4,1)]),
+ D('Flawless Blow','c','noHpLost',[X('dmg',1.5,4)]),
+ D('Taunt','c',0,[X('impE',.7,1),X('shield',.5,1)]),
+ D('Spite','c',0,[X('dmg',.8,3),X('impE',.4,1)]),
+ D('Warm Up','c',0,[X('fury',.4,1),X('draw',0,1)]),
+ D('Reckless Blow','c',0,[X('dmg',1.5,6),X('impS',.5,2)]),
+ D('Quick Patch','c','lowHp',[X('heal',1.2,4)]),
+ D('Rummage','c',0,[X('draw',0,2),X('discP',0,1)]),
+ D('Pile Driver','c',0,[X('hit',.7,1,2)]),
+ D('Reset','c',0,[Z('rerollA'),X('draw',0,1)]),
+ D('Fury Guard','c',0,[X('shield',.8,2),X('fury',.3,1)]),
+ D('Sharp Eyes','c','first',[X('boost',1,2)]),
+ D('Jab','c',0,[X('dmg',.9,2),X('draw',0,1)]),
+ /* uncommon (44-61) */
+ D('Berserker','u',0,[X('fury',.8,2),X('dmg',.8,2)]),
+ D('Crippling Blow','u',0,[X('dmg',1,3),X('impE',.6,2)]),
+ D('Hex','u',0,[X('impE',1,2)]),
+ D('Battle Lust','u',0,[X('fury',.8,3),X('selfdmg',0,2)]),
+ D('Iron Resolve','u',0,[X('shield',1.5,5),X('fury',.4,1)]),
+ D('Hard Bargain','u',0,[X('dmg',1.8,5),X('impS',.5,1)]),
+ D('Veteran\u2019s Edge','u','played9',[X('dmg',1.7,5)]),
+ D('Last Stand','u','lowHp',[X('dmg',2.2,6)]),
+ D('Bare Knuckle','u','handLe3',[X('dmg',2,5)]),
+ D('Meditate','u','noAtk',[X('heal',.8,3),X('draw',0,1)]),
+ D('Siphon Fury','u',0,[X('fury',.9,2),X('heal',.4,1)]),
+ D('Whirlwind','u','noShield',[X('hit',.5,1,3)]),
+ D('Spare Parts','u',0,[X('gen',0,1),X('shield',.7,2)]),
+ D('Calm Mind','u','handLe3',[X('draw',0,3)]),
+ D('Overclock','u',0,[X('power',.4,1),X('selfdmg',0,2)]),
+ D('Mulligan','u','hand6',[Z('rerollA'),X('draw',0,2)]),
+ D('Shatter','u','enShield',[X('dmg',2,5),X('impE',.3,1)]),
+ D('Patient Strike','u','first',[X('dmg',2,4)]),
+ /* rare (62-79) */
+ D('Second Chance','r',0,[X('life',0,2),X('gen',0,2)]),
+ D('Rampage','r',0,[X('hit',.6,2,3),X('fury',.6,2)]),
+ D('Annihilate','r',0,[X('dmg',2.2,6),X('impE',.6,2)]),
+ D('Bulwark of Ages','r',0,[X('shield',2,6),X('maxs',.5,2)]),
+ D('Phoenix Draught','r',0,[X('heal',2,6),X('draw',0,2),X('shield',.5,2)]),
+ D('Blood Frenzy','r',0,[X('fury',1.2,4),X('dmg',1.2,3),X('selfdmg',0,3)]),
+ D('Time Warp','r',0,[X('draw',0,3),X('boost',1,3)]),
+ D('Warlord','r',0,[X('power',.5,2),X('fury',.8,2)]),
+ D('Grand Design','r',0,[Z('tutor'),Z('tutor'),X('shield',1,3)]),
+ D('Soul Rend','r',0,[X('dmg',1.8,6),X('impE',1,2),X('heal',.5,1)]),
+ D('Fortress','r','noShield',[X('shield',2.5,8)]),
+ D('Pure Heart','r','noHpLost',[X('dmg',3,7)]),
+ D('Fortune\u2019s Wheel','r',0,[Z('rerollA'),X('draw',0,3),X('shield',1,3)]),
+ D('Hundred Cuts','r','noSix',[X('hit',1,2,3)]),
+ D('Dominion','r','hand6',[X('dmg',2,6),X('shield',1.5,4)]),
+ D('Last Gasp','r','lowHp',[X('dmg',3.5,8),X('selfdmg',0,4)]),
+ D('Overwhelm','r',0,[X('impE',1.4,3),X('boost',1,4)]),
+ D('Ascension','r',0,[X('fury',1.5,4),X('power',.5,1),X('maxs',.3,1)])
 ];
+TY.push(D('Garbage','g','never',[]));
+const GARB=TY.length-1;
 const rpip=()=>Math.random()*7|0,shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a};
-/* The deck is one of each skill with random pips. Hand is drawn from the stack (deckDraw); played and discarded dominoes go to deckDisc, which is reshuffled when the stack runs out. */
-function buildDeck(){deckDraw=shuffle(TY.map((t,i)=>({a:rpip(),b:rpip(),t:i,ang:0})));deckDisc=[]}
-function drawOne(){if(!deckDraw.length&&deckDisc.length){deckDraw=shuffle(deckDisc);deckDisc=[]}if(!deckDraw.length)return 0;const d=deckDraw.pop();d.ang=0;hand.push(d);stat.drawn++;return 1}
+const byR={c:[],u:[],r:[]};TY.forEach((t,i)=>{if(byR[t.r])byR[t.r].push(i)});
+function randType(){const x=Math.random(),r=x<.6?'c':x<.9?'u':'r',a=byR[r];return a[Math.random()*a.length|0]}
+const newDomino=()=>({a:rpip(),b:rpip(),t:randType(),ang:0}),garb=()=>({a:0,b:0,t:GARB,ang:0});
+/* collection = every domino you own. Each battle the stack is a shuffled copy of it. Played dominoes stay on the board and discarded ones stay in the discard pile: neither comes back during the battle, so you can run out. */
+const starterCollection=()=>TY.slice(0,20).map((t,i)=>({a:rpip(),b:rpip(),t:i}));
+function drawOne(){if(!deckDraw.length)return 0;const d=deckDraw.pop();d.ang=0;hand.push(d);stat.drawn++;return 1}
 function draw(n){let k=0;for(let i=0;i<n;i++)k+=drawOne();return k}
-buildDeck();draw(6);newIntent();
+function startBattle(){placed=[];occ=new Map();energy=MAXE;playedTurn=0;sel=-1;pending=null;drag=null;fresh=-1;swing=null;floats=[];bat={played:0,hpLost:0,turn:1};
+  deckDraw=shuffle(collection.map(d=>({a:d.a,b:d.b,t:d.t,ang:0})));deckDisc=[];hand=[];draw(6);newIntent();busy=0;lastPlay=performance.now()}
+collection=starterCollection();startBattle();
 const rotOf=d=>((d.ang/90%4)+4)%4;
 const dims=r=>r%2?[1,2]:[2,1];
 const cells=m=>[[[m.x,m.y],[m.x+1,m.y]],[[m.x,m.y],[m.x,m.y+1]],[[m.x+1,m.y],[m.x,m.y]],[[m.x,m.y+1],[m.x,m.y]]][m.rot&3];
@@ -153,7 +234,7 @@ const pt=e=>{const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.client
 function size(){const r=cv.getBoundingClientRect();W=r.width;H=r.height;dpr=devicePixelRatio||1;cv.width=W*dpr;cv.height=H*dpr;
   const f=getComputedStyle(document.documentElement);fg=f.getPropertyValue('--fg').trim()||'#000';bg=f.getPropertyValue('--bg').trim()||'#fff';
   if(first){fit();first=0}info()}
-function fit(){S=Math.min((W-24)/(N*TW),(H-110)/(N*TH));px=py=0;info()}
+function fit(){S=Math.min((W-24)/((W<700?9.5:N)*TW),(H-110)/(N*TH));px=py=0;info()}
 function zoom(k){S=Math.max(.25,Math.min(3,S*k));px*=k;py*=k;info()}
 function info(){$('#info').textContent=`Tile ${Math.round(TW*S)} × ${Math.round(TH*S)} px · ${N} × ${N}`}
 new ResizeObserver(size).observe(cv);
@@ -187,7 +268,7 @@ function frame(){requestAnimationFrame(frame);if(!W)return;
   poly([P(0,0),P(N,0),P(N,N),P(0,N)],null,1,2.5);
   drawChars();
   const live=drag&&drag.on,act=live?drag:pending;
-  let ck;if(act){cl+=((live?LIFT:7)-cl)*.3;ct+=(T-ct)*.25;ck=check(act);hi(act,ck.ok)}
+  let ck;if(act){cl+=((live?LIFT:7)-cl)*.3;ct+=(T-ct)*.25;ck=checkP(act);hi(act,ck.ok)}
   
   depthSort(placed.concat([{ch:'c'},{ch:'p'}]))
     .forEach(m=>{if(m.ch)return drawChar(m.ch);const a=(performance.now()-(m.born||0))/380;dom(m,a<1?34*(1-a)*(1-a):0,PLACED,false)});
@@ -201,7 +282,7 @@ function render(){
   tray.innerHTML='';pc.clear();
   hand.forEach((d,i)=>{const s=document.createElement('div');s.className='slot'+(i===sel?' sel':'')+(!busy&&!pending&&!ended&&canPlay(d)?' play':'')+(i===fresh?' in':'');
     if((pending&&pending.i===i)||(drag&&drag.i===i))s.style.visibility='hidden';
-    s.innerHTML=dhtml(d);s.onpointerdown=e=>{e.preventDefault();if(st||drag||ended||busy)return;st={i,x:e.clientX,y:e.clientY,el:s,pid:e.pointerId}};tray.append(s)});
+    s.innerHTML=dhtml(d);s.onpointerdown=e=>{e.preventDefault();if(st||drag||ended||busy)return;st={i,x:e.clientX,y:e.clientY,el:s,pid:e.pointerId};try{document.body.setPointerCapture(e.pointerId)}catch(_){}};tray.append(s)});
   tray.classList.toggle('lock',!!pending||ended||busy);$('#actions').classList.toggle('on',!!pending);
   $('#hint').textContent=busy===2?'Resolving effects':busy?'Computer turn':pending?'Tap the domino or press OK to place it':drag?'Right-click or tap with a second finger to rotate':sel>=0?'Tap to rotate. Drag onto the board.':'Select a domino';hud()}
 function select(i){sel=i;render()}
@@ -212,12 +293,12 @@ function moveDrag(e){const[X,Y]=pt(e),d=drag;d.e=e;d.on=X>=0&&X<=W&&Y>=0&&Y<=H;
   ghost.style.display=d.on?'none':'block';ghost.style.left=e.clientX+'px';ghost.style.top=e.clientY+'px'}
 addEventListener('pointermove',e=>{if(!st||e.pointerId!==st.pid)return;if(drag&&(e.buttons&2)&&!(drag.pb&2))rotDrag();if(drag)drag.pb=e.buttons;
   if(st&&!drag&&Math.hypot(e.clientX-st.x,e.clientY-st.y)>8){
-    const d=hand[st.i];drag={i:st.i,x:0,y:0,rot:rotOf(d),a:d.a,b:d.b,on:0};ct=0;cl=0;sel=st.i;render();
+    const d=hand[st.i];drag={i:st.i,x:0,y:0,rot:rotOf(d),a:d.a,b:d.b,on:0};ct=0;cl=0;sel=st.i;document.querySelectorAll('.slot').forEach((x,k)=>x.classList.toggle('sel',k===sel));st.el.style.visibility='hidden';$('#hint').textContent='Drag onto the board. Tap with a second finger to rotate.';hud();
     ghost.innerHTML=`<div class="slot sel">${dhtml(d)}</div>`}
   if(drag)moveDrag(e)});
 addEventListener('pointerup',e=>{if(!st||e.pointerId!==st.pid)return;const s=st;st=null;
   if(drag){const d=drag;drag=null;ghost.style.display='none';
-    const ck=d.on&&check(d);if(d.on&&ck.ok){pending={x:d.x,y:d.y,rot:d.rot,i:d.i,a:d.a,b:d.b}}else if(d.on)toast(ck.why);
+    const ck=d.on&&checkP(d);if(d.on&&ck.ok){pending={x:d.x,y:d.y,rot:d.rot,i:d.i,a:d.a,b:d.b}}else if(d.on)toast(ck.why);
     render();return}
   if(sel===s.i){const d=hand[s.i];d.ang+=90;s.el.firstChild.style.transform=`rotate(${d.ang}deg)`}else select(s.i)});
 addEventListener('pointercancel',()=>{st=null;drag=null;ghost.style.display='none';render()});
@@ -226,22 +307,26 @@ function rotDrag(){const n=performance.now();if(!drag||n-lastRot<150)return;last
 addEventListener('pointerdown',e=>{if(drag&&st&&(e.button===2||e.pointerId!==st.pid))rotDrag()});
 addEventListener('mousedown',e=>{if(e.button!==2)return;if(drag)rotDrag();});
 addEventListener('contextmenu',e=>e.preventDefault());
+document.addEventListener('touchmove',e=>{if(drag||pdrag||st)e.preventDefault()},{passive:false});
 addEventListener('keydown',e=>{if(e.key==='r'||e.key==='R'){if(drag)rotDrag()}});
 
 function hit(m,X,Y){const[w,h]=dims(m.rot);return[0,cl+ct].some(z=>{const[a,b]=G(X,Y+z*S);return a>=m.x&&a<m.x+w&&b>=m.y&&b<m.y+h})}
-cv.onpointerdown=e=>{const[X,Y]=pt(e);cv.setPointerCapture(e.pointerId);
+const cp=new Map();let pd=0;const pinchDist=()=>{const a=[...cp.values()];return Math.hypot(a[0][0]-a[1][0],a[0][1]-a[1][1])};
+cv.onpointerdown=e=>{const[X,Y]=pt(e);cv.setPointerCapture(e.pointerId);if(drag)return;cp.set(e.pointerId,[X,Y]);if(cp.size===2){pan=pdrag=null;pd=pinchDist();return}
   if(pending&&hit(pending,X,Y)){const[fx,fy]=G(X,Y);pdrag={X,Y,fx,fy,x:pending.x,y:pending.y,moved:0}}else pan={X,Y,px,py}};
-cv.onpointermove=e=>{const[X,Y]=pt(e);
+cv.onpointermove=e=>{const[X,Y]=pt(e);if(cp.has(e.pointerId))cp.set(e.pointerId,[X,Y]);if(cp.size===2){const d=pinchDist();if(pd>0&&d>0)zoom(d/pd);pd=d;return}
   if(pdrag){if(Math.hypot(X-pdrag.X,Y-pdrag.Y)>8)pdrag.moved=1;
     if(pdrag.moved){const[fx,fy]=G(X,Y);pending.x=Math.round(pdrag.x+fx-pdrag.fx);pending.y=Math.round(pdrag.y+fy-pdrag.fy);clamp(pending)}}
   else if(pan){px=pan.px+X-pan.X;py=pan.py+Y-pan.Y}};
-cv.onpointerup=cv.onpointercancel=()=>{if(pdrag&&!pdrag.moved)commit();pdrag=pan=null};
+cv.onpointerup=cv.onpointercancel=e=>{const was=cp.size;cp.delete(e.pointerId);if(was>=2){pdrag=pan=null;return}if(pdrag&&!pdrag.moved)commit();pdrag=pan=null};
 
-async function commit(){const m=pending;if(!m||busy)return;const ck=check(m);if(!ck.ok)return toast(ck.why);
+async function commit(){const m=pending;if(!m||busy)return;const ck=checkP(m);if(!ck.ok)return toast(ck.why);
   placed.push({x:m.x,y:m.y,rot:m.rot,a:m.a,b:m.b});const id=++uid;cells(m).forEach(([a,b],k)=>occ.set(a+','+b,{id,o:'p',pip:k?m.b:m.a}));energy-=ck.cost;stat.played++;stat.spent+=ck.cost;stat.pips+=m.a+m.b;if(m.a===m.b)stat.doubles++;if(!ck.cost)stat.free++;stat.maxCost=Math.max(stat.maxCost,ck.cost);playedTurn=1;swing={who:'p',t0:performance.now()};lastPlay=performance.now();
-  const d=hand.splice(m.i,1)[0];deckDisc.push(d);pending=null;sel=-1;busy=2;render();
+  /* the played domino stays on the board: it does not go to the discard pile */
+  const d=hand.splice(m.i,1)[0];pending=null;sel=-1;busy=2;bat.played++;render();
   await sleep(250);await runFx(d);busy=0;lastPlay=performance.now();
-  if(foe.hp<=0)return finish('Victory! The enemy was defeated');render()}
+  if(pl.hp<=0)return finish('You were defeated');if(lives<=0)return finish('You ran out of lives');
+  if(foe.hp<=0)return battleWon();render()}
 $('#ok').onclick=commit;
 $('#cancel').onclick=()=>{pending=null;render()};
 const pc=new Map(),sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -268,11 +353,28 @@ function drawChar(w){const now=performance.now(),k=TW*S*1.25,Wc=3.6*k,Hc=3*k,fad
     const a=Math.max(faded?.2:1,p>=0?Math.sin(Math.PI*p)*.65:0);
     fx.setTransform(1,0,0,1,0,0);fx.clearRect(0,0,cw,ch);fx.setTransform(dpr*k,0,0,dpr*k,cw/2,ch*.75);fig(fx,w,p);
     const[X,Y]=P(o.x+1.5,o.y+1.5);cx.globalAlpha=a;cx.drawImage(fc,X-Wc/2,Y-Hc*.75,Wc,Hc);cx.globalAlpha=1}
-const fxVal=(e,s)=>e.v?e.v(s):0,hasAtk=def=>def.fx.some(e=>e.k==='dmg'||e.k==='hit');
+const fxVal=(e,s)=>e.v?e.v(s):0,hasAtk=def=>def.fx.some(e=>e.k==='dmg'||e.k==='hit'),others=d=>hand.filter(h=>h!==d);
+const RN={c:'Common',u:'Uncommon',r:'Rare',g:'Junk'};
+/* play conditions: a domino with a condition can only be played while it holds */
+const CD={
+ noSix:{t:'you have no 6 pips in hand',f:d=>!others(d).some(h=>h.a===6||h.b===6)},
+ hand6:{t:'you hold 6 or more dominoes',f:d=>hand.length>=6},
+ handLe3:{t:'you hold 3 or fewer dominoes',f:d=>hand.length<=3},
+ noShield:{t:'you have no shield',f:d=>pl.sh===0},
+ noAtk:{t:'you have no attack dominoes in hand',f:d=>!others(d).some(h=>hasAtk(TY[h.t]))},
+ noHpLost:{t:'you have not lost HP this battle',f:d=>!bat.hpLost},
+ first:{t:'no domino has been played yet this turn',f:d=>!playedTurn},
+ played9:{t:'you have played 9 or more dominoes this battle',f:d=>bat.played>=9},
+ lowHp:{t:'your HP is half or less',f:d=>pl.hp*2<=pl.max},
+ enShield:{t:'the enemy has shield',f:d=>foe.sh>0},
+ never:{t:'cannot be played',f:d=>false}};
+const condOk=d=>{const c=CD[TY[d.t].c];return !c||c.f(d)};
+function checkP(m){const d=hand[m.i];if(d){const c=CD[TY[d.t].c];if(c&&!c.f(d))return{ok:0,why:TY[d.t].c==='never'?'Garbage cannot be played':'Needs: '+c.t}}return check(m)}
+const stx=o=>o.fury>0?'Fury '+o.fury:o.fury<0?'Impair '+(-o.fury):'';
 function fxLines(d){const s=d.a+d.b,def=TY[d.t],bo=hasAtk(def)?pl.boost:0;
-  return def.fx.map(e=>{const v=fxVal(e,s);switch(e.k){
-    case 'dmg':return `Deal ${v+pl.pow+bo} damage`;
-    case 'hit':return `Deal ${v+pl.pow+bo} damage ×${e.t}`;
+  return def.fx.map(e=>{const v=fxVal(e,s),n=Math.max(0,v+pl.pow+bo+pl.fury);switch(e.k){
+    case 'dmg':return `Deal ${n} damage`;
+    case 'hit':return `Deal ${n} damage ×${e.t}`;
     case 'shield':return `Gain ${v} shield`;
     case 'maxs':return `Max shield +${v}`;
     case 'draw':return `Draw ${v}`;
@@ -283,30 +385,55 @@ function fxLines(d){const s=d.a+d.b,def=TY[d.t],bo=hasAtk(def)?pl.boost:0;
     case 'boost':return `Gain ${v} Boost`;
     case 'heal':return `Heal ${v}`;
     case 'rerollA':return 'Reroll all dominoes in hand';
-    case 'rerollP':return 'Reroll a domino of your choice'}})}
+    case 'rerollP':return 'Reroll a domino of your choice';
+    case 'fury':return `Gain ${v} Fury`;
+    case 'impS':return `Apply ${v} Impair to yourself`;
+    case 'impE':return `Apply ${v} Impair to the enemy`;
+    case 'selfdmg':return `Lose ${v} HP`;
+    case 'gen':return `Add ${v} random domino${v>1?'es':''} to your stack`;
+    case 'life':return `Gain ${v} lives`}})}
 function pv(){const d=hand[sel],e=$('#pv'),on=sel>=0&&!!d&&!ended&&!busy;e.classList.toggle('on',on);if(!on)return;
-  const def=TY[d.t],mod=hasAtk(def)&&(pl.pow||pl.boost)?`<small>Includes Power +${pl.pow}${pl.boost?', Boost +'+pl.boost:''}</small>`:'';
-  e.innerHTML=`<div class="sel"><div class="d" style="transition:none">${half(d.a)}${half(d.b)}</div></div><b>${def.n}</b>${fxLines(d).map(l=>`<div>${l}.</div>`).join('')}${mod}<small>Pip total ${d.a+d.b}</small>`}
+  const def=TY[d.t],c=CD[def.c],mods=[];
+  if(hasAtk(def)){if(pl.pow)mods.push('Power +'+pl.pow);if(pl.boost)mods.push('Boost +'+pl.boost);if(pl.fury)mods.push(stx(pl))}
+  e.innerHTML=`<div class="sel"><div class="d" style="transition:none">${half(d.a)}${half(d.b)}</div></div><b>${def.n}</b><small>${RN[def.r]}, pip total ${d.a+d.b}</small>${fxLines(d).map(l=>`<div>${l}.</div>`).join('')}${c?`<div><i>${def.c==='never'?'Cannot be played.':'Only if '+c.t+(c.f(d)?'.':' (not met).')}</i></div>`:''}${mods.length?`<small>Includes ${mods.join(', ')}</small>`:''}`}
 
 /* ---- combat ---- */
+function newPl(){return{hp:50,max:50,sh:0,maxSh:9,pow:0,boost:0,fury:0}}
+function makeFoe(n){const hp=70+(n-1)*30+(n-1)*(n-1)*5;return{hp,max:hp,sh:0,fury:0,intent:[],lv:n,name:['Gruff Hare','Bone Rabbit','Iron Hare','Void Rabbit','Warlord Hare'][n-1]||'Hare Lord '+n}}
+const tick=o=>{o.fury+=o.fury>0?-1:o.fury<0?1:0};
 function fl(w,t){floats.push({w,t,t0:performance.now(),o:(Math.random()-.5)*50})}
+function flashScreen(){flashT=performance.now();const e=$('#flashov');e.classList.remove('on');void e.offsetWidth;e.classList.add('on')}
 function hitFoe(n){n=Math.max(0,n);const ab=Math.min(foe.sh,n),dm=n-ab;foe.sh-=ab;foe.hp=Math.max(0,foe.hp-dm);stat.dealt+=dm;fl('c',dm?'-'+dm:'Blocked')}
-function hitPl(n){const ab=Math.min(pl.sh,n),dm=n-ab;pl.sh-=ab;pl.hp=Math.max(0,pl.hp-dm);stat.taken+=dm;stat.absorbed+=ab;fl('p',dm?'-'+dm+' HP':'Blocked')}
-/* The enemy plans 1 or 2 dominoes per turn. Each planned domino is an attack or (rarely) a block, shown to the player as its intent. */
-function newIntent(){const n=Math.random()<.5?1:2;foe.intent=Array.from({length:n},()=>Math.random()<.2?{k:'blk',v:4+(Math.random()*5|0)}:{k:'atk',v:4+(Math.random()*8|0)})}
+function hitPl(n){const ab=Math.min(pl.sh,n),dm=n-ab;pl.sh-=ab;pl.hp=Math.max(0,pl.hp-dm);stat.taken+=dm;stat.absorbed+=ab;if(dm)bat.hpLost=1;fl('p',dm?'-'+dm+' HP':'Blocked');return dm}
+function loseLife(){lives--;stat.lost++;flashScreen();fl('p','Lost a life')}
+/* The enemy plans 1 or 2 dominoes per turn and shows each one as its intent. Attacks and blocks are common; the rest are uncommon. */
+function newIntent(){const n=Math.random()<.5?1:2,L=battleNo-1;
+  foe.intent=Array.from({length:n},()=>{const r=Math.random();
+    if(r<.62)return{k:'atk',v:4+L+(Math.random()*(8+L)|0)};
+    if(r<.75)return{k:'blk',v:4+L+(Math.random()*5|0)};
+    if(r<.82)return{k:'lifeatk',v:5+L+(Math.random()*(6+L)|0)};
+    if(r<.88)return{k:'discH'};
+    if(r<.94)return{k:'mill'};
+    return{k:'junk'}})}
+const itx=i=>i.k==='atk'?'Attack '+Math.max(0,i.v+foe.fury):i.k==='lifeatk'?'Attack '+Math.max(0,i.v+foe.fury)+' (lose a life if unblocked)':i.k==='blk'?'Block '+i.v:i.k==='discH'?'Discard a domino from your hand':i.k==='mill'?'Discard your top stack domino, add Garbage':'Shuffle 3 Garbage into your stack';
 
+const cardHtml=d=>{const def=TY[d.t],c=CD[def.c],l=fxLines(d);return `<div class="d">${half(d.a)}${half(d.b)}</div><b>${def.n}</b><small>${RN[def.r]}</small><small>${l.join('. ')}${l.length?'.':''}</small>${c?`<small><i>Only if ${c.t}</i></small>`:''}`};
 /* choose one domino from a list; resolves with its index */
 function pick(title,sub,list){return new Promise(res=>{
   $('#ptitle').textContent=title;$('#psub').textContent=sub;const g=$('#pgrid');g.innerHTML='';
-  list.forEach((d,i)=>{const b=document.createElement('button');
-    b.innerHTML=`<div class="d">${half(d.a)}${half(d.b)}</div><b>${TY[d.t].n}</b><small>${fxLines(d).join('. ')}.</small>`;
-    b.onclick=()=>{$('#pick').classList.remove('on');res(i)};g.append(b)});
+  list.forEach((d,i)=>{const b=document.createElement('button');b.innerHTML=cardHtml(d);b.onclick=()=>{$('#pick').classList.remove('on');res(i)};g.append(b)});
+  $('#pick').classList.add('on')})}
+/* show dominoes with a single continue button */
+function showCards(title,sub,list,btn){return new Promise(res=>{
+  $('#ptitle').textContent=title;$('#psub').textContent=sub;const g=$('#pgrid');g.innerHTML='';
+  list.forEach(d=>{const x=document.createElement('div');x.className='card';x.innerHTML=cardHtml(d);g.append(x)});
+  const b=document.createElement('button');b.className='solid';b.textContent=btn;b.style.gridColumn='1/-1';b.onclick=()=>{$('#pick').classList.remove('on');res()};g.append(b);
   $('#pick').classList.add('on')})}
 
 async function runFx(d){const s=d.a+d.b,def=TY[d.t],atk=hasAtk(def),bo=atk?pl.boost:0;
-  for(const e of def.fx){if(foe.hp<=0)break;const v=fxVal(e,s);
-    if(e.k==='dmg')hitFoe(v+pl.pow+bo);
-    else if(e.k==='hit'){for(let i=0;i<e.t&&foe.hp>0;i++){hitFoe(v+pl.pow+bo);render();await sleep(260)}}
+  for(const e of def.fx){if(foe.hp<=0||pl.hp<=0)break;const v=fxVal(e,s),dmg=()=>Math.max(0,v+pl.pow+bo+pl.fury);
+    if(e.k==='dmg')hitFoe(dmg());
+    else if(e.k==='hit'){for(let i=0;i<e.t&&foe.hp>0;i++){hitFoe(dmg());render();await sleep(260)}}
     else if(e.k==='shield'){pl.sh+=v;stat.shield+=v;fl('p','+'+v+' shield')}
     else if(e.k==='maxs'){pl.maxSh+=v;fl('p','Max shield +'+v)}
     else if(e.k==='draw'){for(let i=0;i<v;i++){if(drawOne())fresh=hand.length-1;render();await sleep(220)}fresh=-1}
@@ -322,17 +449,23 @@ async function runFx(d){const s=d.a+d.b,def=TY[d.t],atk=hasAtk(def),bo=atk?pl.bo
     else if(e.k==='heal'){const h=Math.min(v,pl.max-pl.hp);pl.hp+=h;stat.healed+=h;fl('p','+'+h+' HP')}
     else if(e.k==='rerollA'){hand.forEach(h=>{h.a=rpip();h.b=rpip()});stat.rerolls+=hand.length;fl('p','Rerolled hand')}
     else if(e.k==='rerollP'&&hand.length){const c=await pick('Reroll a domino','Choose a domino from your hand to reroll.',hand);hand[c].a=rpip();hand[c].b=rpip();stat.rerolls++}
+    else if(e.k==='fury'){pl.fury+=v;fl('p',stx(pl)||'Fury 0')}
+    else if(e.k==='impS'){pl.fury-=v;fl('p',stx(pl)||'Fury 0')}
+    else if(e.k==='impE'){foe.fury-=v;fl('c',stx(foe)||'Fury 0')}
+    else if(e.k==='selfdmg'){pl.hp=Math.max(0,pl.hp-v);stat.selfdmg+=v;bat.hpLost=1;fl('p','-'+v+' HP')}
+    else if(e.k==='gen'){for(let i=0;i<v;i++)deckDraw.splice(Math.random()*(deckDraw.length+1)|0,0,newDomino());fl('p','+'+v+' in stack')}
+    else if(e.k==='life'){lives+=v;fl('p','+'+v+' lives')}
     render();await sleep(160)}
-  if(atk)pl.boost=0}
+  if(atk)tick(pl)}
 
-/* ---- character tags (HP, shield, intent) and floating numbers ---- */
-function tag(X,Y,lines){cx.font='700 12px Archivo,system-ui,sans-serif';const lh=15,w=Math.max(...lines.map(l=>cx.measureText(l).width))+16,h=lines.length*lh+8,x=Math.round(X-w/2),y=Math.round(Y-h);
+/* ---- character tags (HP, shield, status, intent) and floating numbers ---- */
+function tag(X,Y,lines){cx.font='700 12px Archivo,system-ui,sans-serif';const lh=15,w=Math.max(...lines.map(l=>cx.measureText(l).width))+16,h=lines.length*lh+8,x=Math.max(4,Math.min(W-w-4,Math.round(X-w/2))),y=Math.max(4,Math.round(Y-h));
   cx.fillStyle=bg;cx.fillRect(x,y,w,h);cx.strokeStyle=fg;cx.lineWidth=2;cx.strokeRect(x,y,w,h);cx.fillStyle=fg;cx.textAlign='center';cx.textBaseline='middle';
-  lines.forEach((l,i)=>cx.fillText(l,X,y+4+lh*i+lh/2))}
+  lines.forEach((l,i)=>cx.fillText(l,x+w/2,y+4+lh*i+lh/2))}
 function drawLabels(){const now=performance.now(),k=TW*S*1.25;
   for(const w of['c','p']){const o=CH[w],[X,Y]=P(o.x+1.5,o.y+1.5),top=Y-1.7*k-8;
-    if(w==='c')tag(X,top,['ENEMY  HP '+foe.hp+'/'+foe.max+'  Shield '+foe.sh,'Next: '+foe.intent.map(i=>(i.k==='atk'?'Attack ':'Block ')+i.v).join(' / ')]);
-    else{const l2=['Shield '+pl.sh+'/'+pl.maxSh];if(pl.pow)l2.push('Power +'+pl.pow);if(pl.boost)l2.push('Boost +'+pl.boost);tag(X,top,['YOU  HP '+pl.hp+'/'+pl.max,l2.join('   ')])}}
+    if(w==='c')tag(X,top,[foe.name.toUpperCase()+'  LV '+foe.lv+'  HP '+foe.hp+'/'+foe.max,['Shield '+foe.sh,stx(foe)].filter(Boolean).join('   '),...foe.intent.map(i=>'> '+itx(i))]);
+    else tag(X,top,['YOU  HP '+pl.hp+'/'+pl.max,['Shield '+pl.sh+'/'+pl.maxSh,stx(pl),pl.pow?'Power +'+pl.pow:'',pl.boost?'Boost +'+pl.boost:''].filter(Boolean).join('   ')])}
   floats=floats.filter(f=>now-f.t0<1100);
   for(const f of floats){const o=CH[f.w],[X,Y]=P(o.x+1.5,o.y+1.5),e=(now-f.t0)/1100,yy=Y-1.7*k-72-e*36;
     cx.globalAlpha=1-e*e;cx.font='700 16px Archivo,system-ui,sans-serif';cx.textAlign='center';cx.textBaseline='middle';cx.lineWidth=4;cx.strokeStyle=bg;cx.strokeText(f.t,X+f.o,yy);cx.fillStyle=fg;cx.fillText(f.t,X+f.o,yy);cx.globalAlpha=1}}
@@ -341,10 +474,10 @@ function depthSort(a){const r=a.map(rect),n=a.length,out=[],vis=[];
   const behind=(i,j)=>r[i][1]<=r[j][0]||r[i][3]<=r[j][2];
   const v=j=>{if(vis[j])return;vis[j]=1;for(let i=0;i<n;i++)if(i!==j&&behind(i,j)&&!behind(j,i))v(i);out.push(a[j])};
   for(let j=0;j<n;j++)v(j);return out}
-function newStat(){return{played:0,wasted:0,turn:1,spent:0,pips:0,doubles:0,free:0,maxCost:0,cpu:0,lost:0,dealt:0,taken:0,absorbed:0,shield:0,healed:0,drawn:0,rerolls:0,t0:performance.now()}}
+function newStat(){return{played:0,wasted:0,turn:1,spent:0,pips:0,doubles:0,free:0,maxCost:0,cpu:0,lost:0,battles:0,selfdmg:0,dealt:0,taken:0,absorbed:0,shield:0,healed:0,drawn:0,rerolls:0,t0:performance.now()}}
 function rs(){$('#reset').classList.toggle('on',!ended&&!busy&&performance.now()-lastPlay>1e4)}
 setInterval(rs,500);
-function canPlay(d){const k=d.a+','+d.b;if(!pc.has(k)){let ok=0;for(let r=0;r<4&&!ok;r++){const[w,h]=dims(r);for(let x=0;x<=N-w&&!ok;x++)for(let y=0;y<=N-h&&!ok;y++)ok=check({x,y,rot:r,a:d.a,b:d.b}).ok}pc.set(k,!!ok)}return pc.get(k)}
+function canPlay(d){if(!condOk(d))return false;const k=d.a+','+d.b;if(!pc.has(k)){let ok=0;for(let r=0;r<4&&!ok;r++){const[w,h]=dims(r);for(let x=0;x<=N-w&&!ok;x++)for(let y=0;y<=N-h&&!ok;y++)ok=check({x,y,rot:r,a:d.a,b:d.b}).ok}pc.set(k,!!ok)}return pc.get(k)}
 function cpuPlay(){const rare=Math.random()<.12,own=placed.some(m=>m.cpu);
   for(let n=0;n<500;n++){const m={x:Math.random()*N|0,y:Math.random()*N|0,rot:Math.random()*4|0,cpu:1};clamp(m);
     const cs=cells(m),req=[null,null];let touch=0,bad=0,stem=0;
@@ -354,29 +487,38 @@ function cpuPlay(){const rare=Math.random()<.12,own=placed.some(m=>m.cpu);
     if(!check(m,1,'c').ok)continue;
     const id=++uid;cs.forEach(([x,y],k)=>occ.set(x+','+y,{id,o:'c',pip:k?m.b:m.a}));placed.push({...m,born:performance.now()});stat.cpu++;swing={who:'c',t0:performance.now()};return 1}
   return 0}
+async function battleWon(){busy=3;stat.battles++;render();
+  const gain=[0,1,2].map(()=>newDomino());gain.forEach(d=>collection.push({a:d.a,b:d.b,t:d.t}));
+  await showCards('Victory!','You healed to full HP. These 3 dominoes were added to your stack for the next battle.',gain,'Next battle');
+  battleNo++;pl=newPl();foe=makeFoe(battleNo);startBattle();render();return stuckCheck()}
 async function endTurn(){if(pending||ended||busy)return;busy=1;sel=-1;stat.wasted+=energy;energy=0;render();
-  if(!playedTurn){lives--;stat.lost++;flashT=performance.now();render();await sleep(1100);if(lives<=0)return finish('You ran out of lives')}
+  if(!playedTurn){flashScreen();lives--;stat.lost++;render();await sleep(1100);if(lives<=0)return finish('You ran out of lives')}
   foe.sh=0;
   for(const it of foe.intent){await sleep(500);cpuPlay();
-    if(it.k==='atk')hitPl(it.v);else{foe.sh+=it.v;fl('c','+'+it.v+' shield')}
-    hud();if(pl.hp<=0)return finish('You were defeated')}
-  await sleep(450);stat.turn++;energy=MAXE;playedTurn=0;if(pl.sh>pl.maxSh){pl.sh=pl.maxSh;fl('p','Excess shield lost')}newIntent();render();
+    if(it.k==='atk'||it.k==='lifeatk'){const dm=hitPl(Math.max(0,it.v+foe.fury));tick(foe);if(it.k==='lifeatk'&&dm>0){await sleep(250);loseLife()}}
+    else if(it.k==='blk'){foe.sh+=it.v;fl('c','+'+it.v+' shield')}
+    else if(it.k==='discH'){if(hand.length){deckDisc.push(hand.splice(Math.random()*hand.length|0,1)[0]);fl('p','Domino discarded')}}
+    else if(it.k==='mill'){if(deckDraw.length)deckDisc.push(deckDraw.pop());deckDraw.push(garb());fl('p','Garbage on your stack')}
+    else if(it.k==='junk'){for(let i=0;i<3;i++)deckDraw.push(garb());shuffle(deckDraw);fl('p','3 Garbage shuffled in')}
+    render();if(pl.hp<=0)return finish('You were defeated');if(lives<=0)return finish('You ran out of lives')}
+  await sleep(450);stat.turn++;bat.turn++;energy=MAXE;playedTurn=0;if(pl.sh>pl.maxSh){pl.sh=pl.maxSh;fl('p','Excess shield lost')}newIntent();render();
   for(let i=0;i<4;i++){if(drawOne())fresh=hand.length-1;render();await sleep(380)}
   fresh=-1;busy=0;lastPlay=performance.now();
-  if(hand.length>=12)return finish('Your hand reached 12 dominoes');render()}
+  if(hand.length>=12)return finish('Your hand reached 12 dominoes');render();return stuckCheck()}
+/* At the start of a turn (and a battle), if nothing in hand can be played you lose a life and the turn passes. */
+async function stuckCheck(){if(ended||busy||pending||hand.some(d=>canPlay(d)))return;busy=1;toast('No playable dominoes: you lose a life');render();await sleep(1300);busy=0;return endTurn()}
 function finish(r){reason=r;ended=1;busy=0;$('#otitle').textContent=/^Victory/.test(r)?'Victory':'Game over';render()}
-function newGame(){hand=[];placed=[];occ=new Map();energy=MAXE;stat=newStat();lives=3;ended=0;busy=0;playedTurn=0;sel=-1;pending=null;fresh=-1;swing=null;floats=[];
-  pl={hp:50,max:50,sh:0,maxSh:9,pow:0,boost:0};foe={hp:70,max:70,sh:0,intent:[]};$('#otitle').textContent='Game over';$('#pick').classList.remove('on');
-  buildDeck();draw(6);newIntent();lastPlay=performance.now();render()}
+function newGame(){collection=starterCollection();battleNo=1;stat=newStat();lives=3;ended=0;pl=newPl();foe=makeFoe(1);
+  $('#otitle').textContent='Game over';$('#pick').classList.remove('on');startBattle();render();stuckCheck()}
 function modal(){const s=stat,bp=placed.reduce((t,m)=>t+m.a+m.b,0),hp=hand.reduce((t,d)=>t+d.a+d.b,0),sec=Math.round((performance.now()-s.t0)/1000);
-  const rows=[['Result',reason],['Turns',s.turn],['Time',Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0')],['Lives lost',s.lost],['Your dominoes',s.played],['Computer dominoes',s.cpu],['Damage dealt',s.dealt],['Damage taken',s.taken],['Damage blocked',s.absorbed],['Shield gained',s.shield],['HP healed',s.healed],['Dominoes drawn',s.drawn],['Dominoes rerolled',s.rerolls],['Pips you played',s.pips],['Pips left in hand',hp],['Pips on board',bp],['Energy spent',s.spent],['Energy wasted',s.wasted],['Energy efficiency',Math.round(100*s.spent/Math.max(1,s.spent+s.wasted))+'%'],['Free plays',s.free],['Doubles played',s.doubles],['Costliest play',s.maxCost],['Board covered',Math.round(placed.length/2)+'%']];
+  const rows=[['Result',reason],['Battles won',s.battles],['Turns',s.turn],['Time',Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0')],['Lives lost',s.lost],['Your dominoes',s.played],['Computer dominoes',s.cpu],['Damage dealt',s.dealt],['Damage taken',s.taken],['Damage blocked',s.absorbed],['Shield gained',s.shield],['HP healed',s.healed],['Dominoes drawn',s.drawn],['Dominoes rerolled',s.rerolls],['Self damage',s.selfdmg],['Dominoes owned',collection.length],['Pips you played',s.pips],['Pips left in hand',hp],['Pips on board',bp],['Energy spent',s.spent],['Energy wasted',s.wasted],['Energy efficiency',Math.round(100*s.spent/Math.max(1,s.spent+s.wasted))+'%'],['Free plays',s.free],['Doubles played',s.doubles],['Costliest play',s.maxCost],['Board covered',Math.round(placed.length/2)+'%']];
   $('#ostats').innerHTML='<table>'+rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('')+'</table>'}
-function hud(){$('#energy').innerHTML='Energy '+energy+'<br><span style="font-weight:400;font-size:16px">Lives '+'●'.repeat(Math.max(0,lives))+'○'.repeat(3-Math.max(0,lives))+'</span>';
-  $('#stats').innerHTML=`Played ${stat.played}<br>Energy wasted ${stat.wasted}<br>Turn ${stat.turn}<br>Stack ${deckDraw.length} / Discard ${deckDisc.length}`;
+function hud(){$('#energy').innerHTML='Energy '+energy+'<br><span style="font-weight:400;font-size:16px">Lives '+'●'.repeat(Math.max(0,lives))+'○'.repeat(Math.max(0,3-lives))+'</span>';
+  $('#stats').innerHTML=`Played ${stat.played}<br>Energy wasted ${stat.wasted}<br>Battle ${battleNo}, turn ${bat.turn}<br>Stack ${deckDraw.length} / Discard ${deckDisc.length}`;
   $('#end').disabled=!!pending||!!ended||!!busy;$('#end').classList.toggle('flash',!busy&&!ended&&!pending&&hand.every(d=>!canPlay(d)));rs();pv();$('#over').classList.toggle('on',!!ended);
   if(ended)modal()}
 $('#end').onclick=endTurn;
 $('#again').onclick=$('#reset').onclick=newGame;
 
-render();
+render();stuckCheck();
 </script></body></html>
