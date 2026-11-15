@@ -1,21 +1,24 @@
 extends Node2D
-## Dominomino: bare bones Godot 4 port of domino-board.html.
-## Board, dominoes, characters and the hand tray are drawn in _draw(); the HUD is plain Controls.
+## Dominomino: Godot 4 port of the web game (index.html).
+## Board, dominoes, characters, tags and the hand tray are drawn in _draw(); the HUD is plain Controls.
+## The rules and turn flow live in game.gd. This script is the view: it draws, reads input, and
+## answers the hooks game.gd calls (refresh, pause, pick, float_text, toast, flash, swing ...).
 ## Images (all optional, placeholders are drawn if missing):
 ##   res://images/isometric_tile.png  32x16, 2:1 isometric diamond
 ##   res://images/player.png, enemy.png
 ##   res://images/domino_dot.png      2x2 black pixel
 
 const Game = preload("res://scripts/game.gd")
-const Skills = preload("res://scripts/skills.gd")
+const Dominoes = preload("res://scripts/dominoes.gd")
+const Icons = preload("res://scripts/icons.gd")
 
 const VIEW := Vector2(960, 540)
 const ORIGIN := Vector2(480, 56)   # top vertex of the board diamond
 const HW := 16.0                   # half tile width  (tile is 32x16)
 const HH := 8.0                    # half tile height
 const TRAY_TOP := 404.0
-const TRAY_Y := 466.0
-const SLOT := 60.0
+const TRAY_Y := 446.0              # centre of the dominoes in the hand tray
+const SLOT := 56.0
 const THICK := 5.0                 # thickness of the domino being placed
 const PLACED_THICK := 3.0
 const LIFT := 8.0                  # height while dragging
@@ -24,7 +27,10 @@ const FINGER := 28.0               # aim this many px above the pointer so a fin
 const SWING_MS := 320.0
 const IDLE_RESET_MS := 10000
 const FONT_SIZE := 14
+const TAG_SIZE := 11
 const PIPS := [[], [4], [0, 8], [0, 4, 8], [0, 2, 6, 8], [0, 2, 4, 6, 8], [0, 2, 3, 5, 6, 8]]
+
+signal _picked(index)
 
 var game
 var tile_tex: Texture2D
@@ -32,22 +38,22 @@ var player_tex: Texture2D
 var enemy_tex: Texture2D
 var dot_tex: Texture2D
 var font: Font
+var time_scale := 1.0      # tests speed the waits up
 
 var sel := -1              # selected hand index
 var drag = null            # {i, x, y, rot, a, b, on}
 var pending = null         # dropped on the board, waiting for OK / Cancel
 var press = null           # pointer is down on a hand domino
 var pdrag = null           # pointer is down on the pending domino
-var busy := false          # computer turn / draw in progress
-var ended := false
-var reason := ""
-var swing = null           # {who, t0}
+var swing_fx = null        # {who, t0}
+var floats := []           # floating numbers {w, t, t0, o}
 var flash_t0 := -100000
 var last_play := 0
-var finish_ms := 0
+var last_full := -100000
 var toast_until := 0
+var toast_blink_until := 0
 
-var ui: CanvasLayer
+var ui: Control
 var hint_l: Label
 var energy_l: Label
 var stats_l: Label
@@ -60,6 +66,12 @@ var reset_b: Button
 var over_panel: Panel
 var over_l: Label
 var toast_l: Label
+var flash_rect: ColorRect
+var pick_panel: Panel
+var pick_title: Label
+var pick_sub: Label
+var pick_grid: GridContainer
+var pick_skip: Button
 
 
 func _ready() -> void:
@@ -72,9 +84,11 @@ func _ready() -> void:
 	dot_tex = _tex("res://images/domino_dot.png")
 	font = ThemeDB.fallback_font
 	game = Game.new()
+	game.ui = self
 	_build_ui()
 	last_play = Time.get_ticks_msec()
 	_refresh_ui()
+	game.stuck_check()
 
 
 func _tex(path: String) -> Texture2D:
@@ -85,6 +99,73 @@ func _tex(path: String) -> Texture2D:
 	return null
 
 
+# ---- hooks called by game.gd ----------------------------------------------
+
+func refresh() -> void:
+	_refresh_ui()
+
+
+func pause(sec: float) -> void:
+	await get_tree().create_timer(sec * time_scale).timeout
+
+
+## Show the dominoes in list and wait until one is chosen. Returns its index, or -1 for skip.
+func pick(title: String, sub: String, list: Array, skip: String = "") -> int:
+	pick_title.text = title
+	pick_sub.text = sub
+	for c in pick_grid.get_children():
+		pick_grid.remove_child(c)
+		c.queue_free()
+	for i in list.size():
+		pick_grid.add_child(_card(list[i], i))
+	pick_skip.visible = skip != ""
+	pick_skip.text = skip
+	pick_panel.visible = true
+	var r: int = await _picked
+	pick_panel.visible = false
+	return r
+
+
+func float_text(who: String, text: String) -> void:
+	floats.append({"w": who, "t": text, "t0": Time.get_ticks_msec(), "o": randf_range(-25.0, 25.0)})
+
+
+func toast(text: String) -> void:
+	toast_l.text = text
+	toast_until = Time.get_ticks_msec() + 1400
+	toast_blink_until = 0
+
+
+## The hand holds at most 12: extra draws are skipped and this message flashes briefly.
+func hand_full() -> void:
+	var now := Time.get_ticks_msec()
+	if now - last_full < 900:
+		return
+	last_full = now
+	toast("Hand size is maxed")
+	toast_blink_until = now + 1200
+
+
+func flash() -> void:
+	flash_t0 = Time.get_ticks_msec()
+
+
+func swing(who: String) -> void:
+	swing_fx = {"who": who, "t0": Time.get_ticks_msec()}
+
+
+func fresh(_index: int) -> void:
+	pass
+
+
+func note_play() -> void:
+	last_play = Time.get_ticks_msec()
+
+
+func finished() -> void:
+	_refresh_ui()
+
+
 # ---- UI -------------------------------------------------------------------
 
 func _box(fill: Color, border: Color) -> StyleBoxFlat:
@@ -92,7 +173,28 @@ func _box(fill: Color, border: Color) -> StyleBoxFlat:
 	s.bg_color = fill
 	s.border_color = border
 	s.set_border_width_all(2)
+	s.content_margin_left = 6
+	s.content_margin_right = 6
+	s.content_margin_top = 4
+	s.content_margin_bottom = 4
 	return s
+
+
+func _make_theme() -> Theme:
+	var t := Theme.new()
+	t.default_font_size = FONT_SIZE
+	t.set_stylebox("normal", "Button", _box(Color.WHITE, Color.BLACK))
+	t.set_stylebox("hover", "Button", _box(Color(0.9, 0.9, 0.9), Color.BLACK))
+	t.set_stylebox("pressed", "Button", _box(Color.BLACK, Color.BLACK))
+	t.set_stylebox("disabled", "Button", _box(Color(0.93, 0.93, 0.93), Color(0.6, 0.6, 0.6)))
+	t.set_stylebox("focus", "Button", StyleBoxEmpty.new())
+	t.set_color("font_color", "Button", Color.BLACK)
+	t.set_color("font_hover_color", "Button", Color.BLACK)
+	t.set_color("font_pressed_color", "Button", Color.WHITE)
+	t.set_color("font_disabled_color", "Button", Color(0.55, 0.55, 0.55))
+	t.set_color("font_color", "Label", Color.BLACK)
+	t.set_stylebox("panel", "Panel", _box(Color.WHITE, Color.BLACK))
+	return t
 
 
 func _label(parent: Node, pos: Vector2, sz: Vector2, align = HORIZONTAL_ALIGNMENT_LEFT) -> Label:
@@ -100,70 +202,127 @@ func _label(parent: Node, pos: Vector2, sz: Vector2, align = HORIZONTAL_ALIGNMEN
 	l.position = pos
 	l.size = sz
 	l.horizontal_alignment = align
-	l.add_theme_color_override("font_color", Color.BLACK)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(l)
 	return l
 
 
-func _button(text: String, pos: Vector2, sz: Vector2, callback: Callable) -> Button:
+func _button(text: String, pos: Vector2, sz: Vector2, callback: Callable, parent: Node = null) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.position = pos
 	b.size = sz
 	b.pressed.connect(callback)
-	ui.add_child(b)
+	(parent if parent != null else ui).add_child(b)
 	return b
 
 
 func _build_ui() -> void:
-	ui = CanvasLayer.new()
-	add_child(ui)
+	var layer := CanvasLayer.new()
+	add_child(layer)
+	ui = Control.new()
+	ui.theme = _make_theme()
+	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.size = VIEW
+	layer.add_child(ui)
+
 	hint_l = _label(ui, Vector2(8, 6), Vector2(500, 20))
 	energy_l = _label(ui, Vector2(768, 6), Vector2(184, 40), HORIZONTAL_ALIGNMENT_RIGHT)
 
+	# the info window: 30% opacity so the board shows through
 	pv_panel = Panel.new()
 	pv_panel.position = Vector2(8, 34)
-	pv_panel.size = Vector2(220, 104)
+	pv_panel.size = Vector2(236, 150)
 	pv_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pv_panel.add_theme_stylebox_override("panel", _box(Color.WHITE, Color.BLACK))
+	pv_panel.modulate.a = 0.3
 	ui.add_child(pv_panel)
-	pv_l = _label(pv_panel, Vector2(8, 6), Vector2(204, 92))
+	pv_l = _label(pv_panel, Vector2(8, 6), Vector2(220, 140))
 	pv_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
-	stats_l = _label(ui, Vector2(8, 490), Vector2(300, 48))
-	end_b = _button("End turn", Vector2(836, 488), Vector2(116, 40), _on_end_pressed)
+	stats_l = _label(ui, Vector2(8, 308), Vector2(260, 76))
+	end_b = _button("End turn", Vector2(836, 352), Vector2(116, 40), _on_end_pressed)
 	cancel_b = _button("Cancel", Vector2(380, 372), Vector2(96, 28), _on_cancel_pressed)
 	ok_b = _button("OK", Vector2(484, 372), Vector2(96, 28), _on_ok_pressed)
-	reset_b = _button("Reset game", Vector2(8, 406), Vector2(110, 28), _on_new_game)
+	reset_b = _button("Reset game", Vector2(8, 296), Vector2(110, 26), _on_new_game)
 
-	toast_l = _label(ui, Vector2(330, 34), Vector2(300, 20), HORIZONTAL_ALIGNMENT_CENTER)
+	toast_l = _label(ui, Vector2(280, 34), Vector2(400, 20), HORIZONTAL_ALIGNMENT_CENTER)
 
 	over_panel = Panel.new()
-	over_panel.position = Vector2(300, 60)
-	over_panel.size = Vector2(360, 380)
-	over_panel.add_theme_stylebox_override("panel", _box(Color.WHITE, Color.BLACK))
+	over_panel.position = Vector2(300, 40)
+	over_panel.size = Vector2(360, 420)
 	ui.add_child(over_panel)
 	var title := _label(over_panel, Vector2(0, 8), Vector2(360, 24), HORIZONTAL_ALIGNMENT_CENTER)
 	title.text = "GAME OVER"
-	over_l = _label(over_panel, Vector2(40, 36), Vector2(300, 290))
-	var again := Button.new()
-	again.text = "New game"
-	again.position = Vector2(120, 336)
-	again.size = Vector2(120, 32)
-	again.pressed.connect(_on_new_game)
-	over_panel.add_child(again)
+	over_l = _label(over_panel, Vector2(40, 36), Vector2(300, 330))
+	_button("New game", Vector2(120, 376), Vector2(120, 32), _on_new_game, over_panel)
+
+	# choose-a-domino window (discard / find / reroll / battle reward)
+	pick_panel = Panel.new()
+	pick_panel.position = Vector2(150, 30)
+	pick_panel.size = Vector2(660, 460)
+	pick_panel.visible = false
+	ui.add_child(pick_panel)
+	pick_title = _label(pick_panel, Vector2(0, 8), Vector2(660, 26), HORIZONTAL_ALIGNMENT_CENTER)
+	pick_sub = _label(pick_panel, Vector2(20, 36), Vector2(620, 40), HORIZONTAL_ALIGNMENT_CENTER)
+	pick_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var scroll := ScrollContainer.new()
+	scroll.position = Vector2(14, 82)
+	scroll.size = Vector2(632, 316)
+	pick_panel.add_child(scroll)
+	pick_grid = GridContainer.new()
+	pick_grid.columns = 3
+	pick_grid.add_theme_constant_override("h_separation", 8)
+	pick_grid.add_theme_constant_override("v_separation", 8)
+	scroll.add_child(pick_grid)
+	pick_skip = _button("Skip", Vector2(250, 412), Vector2(160, 34), _on_pick_chosen.bind(-1), pick_panel)
+
+	var fl := CanvasLayer.new()
+	fl.layer = 10
+	add_child(fl)
+	flash_rect = ColorRect.new()
+	flash_rect.color = Color(0, 0, 0, 0)
+	flash_rect.size = VIEW
+	flash_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fl.add_child(flash_rect)
 
 
-func _toast(txt: String) -> void:
-	toast_l.text = txt
-	toast_until = Time.get_ticks_msec() + 1400
+## One selectable domino card in the pick window.
+func _card(d: Dictionary, index: int) -> Button:
+	var def: Dictionary = Dominoes.TY[d.t]
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(196, 104)
+	b.pressed.connect(_on_pick_chosen.bind(index))
+	var txt := "%s  [%d|%d]\n%s\n" % [def.n, d.a, d.b, Dominoes.RARITY_NAMES[def.r]]
+	var lines: Array = game.fx_lines(d)
+	if lines.size() > 0:
+		txt += ". ".join(lines) + "."
+	if def.c != "" and def.c != "never":
+		txt += "\nOnly if " + Dominoes.COND_TEXT[def.c]
+	var l := Label.new()
+	l.text = txt
+	l.position = Vector2(6, 4)
+	l.size = Vector2(184, 96)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.add_theme_font_size_override("font_size", 12)
+	b.add_child(l)
+	return b
+
+
+func _on_pick_chosen(index: int) -> void:
+	_picked.emit(index)
 
 
 func _refresh_ui() -> void:
-	energy_l.text = "Energy %d\nLives %d" % [game.energy, game.lives]
+	energy_l.text = "Energy %d\nLives x%d" % [game.energy, game.lives]
 	var s: Dictionary = game.stats
-	stats_l.text = "Played %d\nEnergy wasted %d\nTurn %d" % [s.played, s.wasted, game.turn]
-	if busy:
+	stats_l.text = "Played %d\nEnergy wasted %d\nBattle %d, turn %d\nStack %d / Discard %d" % [
+			s.played, s.wasted, game.battle_no, game.bat.turn, game.stack.size(), game.discard.size()]
+	if game.busy == 2:
+		hint_l.text = "Resolving effects"
+	elif game.busy == 3:
+		hint_l.text = "Victory!"
+	elif game.busy != 0:
 		hint_l.text = "Computer turn"
 	elif pending != null:
 		hint_l.text = "Tap the domino or press OK to place it"
@@ -173,18 +332,40 @@ func _refresh_ui() -> void:
 		hint_l.text = "Tap to rotate. Drag onto the board."
 	else:
 		hint_l.text = "Select a domino"
-	pv_panel.visible = sel >= 0 and sel < game.hand.size() and not ended
+	if sel >= game.hand.size():
+		sel = -1
+	pv_panel.visible = sel >= 0 and not game.ended and game.busy == 0
 	if pv_panel.visible:
-		var d: Dictionary = game.hand[sel]
-		var sk := Skills.skill(d.a, d.b)
-		pv_l.text = "%s  [%d|%d]\n%s\nPower %d%s" % [sk.name, d.a, d.b, sk.desc, sk.power,
-				(", double bonus +25%" if sk.dbl else "")]
+		pv_l.text = _preview_text(sel)
 	ok_b.visible = pending != null
 	cancel_b.visible = pending != null
-	end_b.disabled = busy or ended or pending != null
-	over_panel.visible = ended
-	if ended:
+	end_b.disabled = game.busy != 0 or game.ended or pending != null
+	over_panel.visible = game.ended
+	if game.ended:
 		over_l.text = _stats_text()
+
+
+func _preview_text(i: int) -> String:
+	var d: Dictionary = game.hand[i]
+	var def: Dictionary = Dominoes.TY[d.t]
+	var t := "%s  [%d|%d]\n%s, pip total %d\n" % [def.n, d.a, d.b, Dominoes.RARITY_NAMES[def.r], d.a + d.b]
+	for l in game.fx_lines(d):
+		t += l + ".\n"
+	if def.c == "never":
+		t += "Cannot be played.\n"
+	elif def.c != "":
+		t += "Only if %s%s.\n" % [Dominoes.COND_TEXT[def.c], "" if game.cond_ok(i) else " (not met)"]
+	var mods := []
+	if Dominoes.has_atk(def):
+		if game.pl.pow != 0:
+			mods.append("Power +%d" % game.pl.pow)
+		if game.pl.boost != 0:
+			mods.append("Boost +%d" % game.pl.boost)
+		if game.pl.fury != 0:
+			mods.append(Game.status_text(game.pl))
+	if mods.size() > 0:
+		t += "Includes " + ", ".join(mods)
+	return t
 
 
 func _stats_text() -> String:
@@ -195,15 +376,18 @@ func _stats_text() -> String:
 	var hand_pips := 0
 	for d in game.hand:
 		hand_pips += d.a + d.b
-	var sec := int((finish_ms - s.t0) / 1000.0)
+	var sec := int((s.t1 - s.t0) / 1000.0)
 	var eff := int(round(100.0 * s.spent / maxi(1, s.spent + s.wasted)))
 	var rows := [
-		["Result", reason], ["Turns", str(game.turn)], ["Time", "%d:%02d" % [sec / 60, sec % 60]],
-		["Lives lost", str(s.lost)], ["Your dominoes", str(s.played)], ["Computer dominoes", str(s.cpu)],
+		["Result", game.reason], ["Battles won", str(s.battles)], ["Turns", str(s.turn)],
+		["Time", "%d:%02d" % [sec / 60, sec % 60]], ["Lives lost", str(s.lost)],
+		["Your dominoes", str(s.played)], ["Computer dominoes", str(s.cpu)],
+		["Damage dealt", str(s.dealt)], ["Damage taken", str(s.taken)], ["Damage blocked", str(s.absorbed)],
+		["Shield gained", str(s.shield)], ["HP healed", str(s.healed)], ["Dominoes drawn", str(s.drawn)],
+		["Dominoes rerolled", str(s.rerolls)], ["Self damage", str(s.selfdmg)], ["Dominoes owned", str(game.collection.size())],
 		["Pips you played", str(s.pips)], ["Pips left in hand", str(hand_pips)], ["Pips on board", str(board_pips)],
 		["Energy spent", str(s.spent)], ["Energy wasted", str(s.wasted)], ["Energy efficiency", "%d%%" % eff],
 		["Free plays", str(s.free)], ["Doubles played", str(s.doubles)], ["Costliest play", str(s.max_cost)],
-		["Board covered", "%d%%" % int(round(game.placed.size() / 2.0))],
 	]
 	var out := ""
 	for r in rows:
@@ -211,7 +395,7 @@ func _stats_text() -> String:
 	return out
 
 
-# ---- buttons and turn flow ------------------------------------------------
+# ---- buttons --------------------------------------------------------------
 
 func _on_ok_pressed() -> void:
 	_commit_pending()
@@ -226,79 +410,43 @@ func _commit_pending() -> void:
 	if pending == null:
 		return
 	var m: Dictionary = pending
-	var res: Dictionary = game.check(m)
+	var res: Dictionary = game.check_p(m)
 	if not res.ok:
-		_toast(res.why)
+		toast(res.why)
 		return
-	game.commit_player(m)
-	swing = {"who": "p", "t0": Time.get_ticks_msec()}
 	pending = null
 	sel = -1
-	last_play = Time.get_ticks_msec()
-	_refresh_ui()
+	game.play_domino(m)
 
 
 func _on_end_pressed() -> void:
-	if busy or ended or pending != null:
+	if pending != null:
 		return
-	busy = true
 	sel = -1
 	drag = null
-	var lost: bool = game.begin_end_turn()
-	_refresh_ui()
-	if lost:
-		flash_t0 = Time.get_ticks_msec()
-		await get_tree().create_timer(1.1).timeout
-		if game.lives <= 0:
-			_finish("You ran out of lives")
-			return
-	var n := 2 + randi() % 5
-	for i in n:
-		await get_tree().create_timer(0.45).timeout
-		if game.cpu_play():
-			swing = {"who": "c", "t0": Time.get_ticks_msec()}
-		_refresh_ui()
-	await get_tree().create_timer(0.45).timeout
-	game.start_new_turn()
-	for i in Game.DRAW_PER_TURN:
-		game.draw_dominoes(1)
-		_refresh_ui()
-		await get_tree().create_timer(0.38).timeout
-	busy = false
-	last_play = Time.get_ticks_msec()
-	if game.hand.size() >= Game.HAND_LIMIT:
-		_finish("Your hand reached %d dominoes" % Game.HAND_LIMIT)
-		return
-	_refresh_ui()
-
-
-func _finish(r: String) -> void:
-	reason = r
-	ended = true
-	busy = false
-	finish_ms = Time.get_ticks_msec()
-	_refresh_ui()
+	game.end_turn()
 
 
 func _on_new_game() -> void:
-	game.reset()
+	game.new_game()
 	sel = -1
 	drag = null
 	pending = null
 	press = null
 	pdrag = null
-	busy = false
-	ended = false
-	swing = null
+	swing_fx = null
+	floats.clear()
+	pick_panel.visible = false
 	last_play = Time.get_ticks_msec()
 	_refresh_ui()
+	game.stuck_check()
 
 
 # ---- input ----------------------------------------------------------------
 # Mouse and touch both arrive as mouse events (touch emulation is on by default).
 
 func _unhandled_input(event: InputEvent) -> void:
-	if ended or busy:
+	if game.ended or game.busy != 0:
 		return
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
@@ -336,7 +484,7 @@ func _tray_at(pos: Vector2) -> int:
 	var n: int = game.hand.size()
 	for i in n:
 		var c := _tray_center(i, n)
-		if Rect2(c - Vector2(SLOT / 2.0, SLOT / 2.0), Vector2(SLOT, SLOT)).has_point(pos):
+		if Rect2(c - Vector2(SLOT / 2.0, 34), Vector2(SLOT, 80)).has_point(pos):
 			return i
 	return -1
 
@@ -419,11 +567,11 @@ func _drop() -> void:
 	var d: Dictionary = drag
 	drag = null
 	if d.on:
-		var res: Dictionary = game.check(d)
+		var res: Dictionary = game.check_p(d)
 		if res.ok:
 			pending = {"x": d.x, "y": d.y, "rot": d.rot, "a": d.a, "b": d.b, "i": d.i}
 		else:
-			_toast(res.why)
+			toast(res.why)
 	_refresh_ui()
 
 
@@ -431,10 +579,13 @@ func _drop() -> void:
 
 func _process(_delta: float) -> void:
 	var now := Time.get_ticks_msec()
-	var stuck: bool = not busy and not ended and pending == null and not game.playable_any()
+	var stuck: bool = game.busy == 0 and not game.ended and pending == null and not game.playable_any()
 	end_b.modulate = Color(0.35, 0.35, 0.35) if (stuck and int(now / 350.0) % 2 == 0) else Color.WHITE
-	reset_b.visible = not ended and not busy and now - last_play > IDLE_RESET_MS
-	toast_l.visible = now < toast_until
+	reset_b.visible = not game.ended and game.busy == 0 and now - last_play > IDLE_RESET_MS
+	var blinking: bool = now < toast_blink_until
+	toast_l.visible = now < toast_until and (not blinking or int(now / 150.0) % 2 == 0)
+	var fa := now - flash_t0
+	flash_rect.color.a = 0.45 if (fa < 1050 and int(fa / 175.0) % 2 == 0) else 0.0
 	queue_redraw()
 
 
@@ -471,7 +622,7 @@ func _draw_board() -> void:
 		act = pending
 	var res: Dictionary = {}
 	if act != null:
-		res = game.check(act)
+		res = game.check_p(act)
 		_draw_highlight(act, res.ok)
 
 	var items: Array = game.placed.duplicate()
@@ -490,9 +641,7 @@ func _draw_board() -> void:
 		var c := _P(act.x + d.x / 2.0, act.y + d.y / 2.0, LIFT + THICK + 6)
 		_label_box(c + Vector2(0, -16), ("-%d" % res.cost) if res.ok else res.why, res.ok)
 
-	var fa := Time.get_ticks_msec() - flash_t0
-	if fa < 1050 and int(fa / 175.0) % 2 == 0:
-		draw_colored_polygon(PackedVector2Array([_P(0, 0), _P(n, 0), _P(n, n), _P(0, n)]), Color(0, 0, 0, 0.5))
+	_draw_tags()
 
 
 func _draw_highlight(m: Dictionary, ok: bool) -> void:
@@ -560,6 +709,11 @@ func _dot(pos: Vector2, white: bool) -> void:
 		draw_texture(dot_tex, pos)
 
 
+func _char_height(who: String) -> float:
+	var tex := player_tex if who == "p" else enemy_tex
+	return float(tex.get_height()) if tex else 40.0
+
+
 func _draw_char(who: String) -> void:
 	var o: Vector2 = Game.CH[who]
 	var other: Vector2 = Game.CH["c" if who == "p" else "p"]
@@ -568,10 +722,10 @@ func _draw_char(who: String) -> void:
 	# characters fade while a domino is being played so they do not hide the board
 	var alpha := 0.2 if (sel >= 0 or pending != null or drag != null) else 1.0
 	var off := Vector2.ZERO
-	if swing != null and swing.who == who:
-		var p: float = (Time.get_ticks_msec() - swing.t0) / SWING_MS
+	if swing_fx != null and swing_fx.who == who:
+		var p: float = (Time.get_ticks_msec() - swing_fx.t0) / SWING_MS
 		if p >= 1.0:
-			swing = null
+			swing_fx = null
 		else:
 			var e := sin(PI * p)
 			off = to * 10.0 * e
@@ -584,6 +738,65 @@ func _draw_char(who: String) -> void:
 		var r := Rect2(center + off - Vector2(12, 36), Vector2(24, 40))
 		draw_rect(r, Color(1, 1, 1, alpha))
 		draw_rect(r, Color(0, 0, 0, alpha), false, 1.0)
+
+
+## HP / shield / status / intent tags above each character, plus floating numbers.
+func _draw_tags() -> void:
+	var foe: Dictionary = game.foe
+	var pl: Dictionary = game.pl
+	var enemy := ["%s  LV %d  HP %d/%d" % [foe.name.to_upper(), foe.lv, foe.hp, foe.max]]
+	var l2 := ["Shield %d" % foe.sh]
+	if Game.status_text(foe) != "":
+		l2.append(Game.status_text(foe))
+	enemy.append("   ".join(l2))
+	for it in foe.intent:
+		enemy.append("> " + game.intent_text(it))
+	var you := ["YOU  HP %d/%d" % [pl.hp, pl.max]]
+	var y2 := ["Shield %d/%d" % [pl.sh, pl.max_sh]]
+	if Game.status_text(pl) != "":
+		y2.append(Game.status_text(pl))
+	if pl.pow != 0:
+		y2.append("Power +%d" % pl.pow)
+	if pl.boost != 0:
+		y2.append("Boost +%d" % pl.boost)
+	you.append("   ".join(y2))
+	for who in ["c", "p"]:
+		var o: Vector2 = Game.CH[who]
+		var c := _P(o.x + 1.5, o.y + 1.5)
+		_tag(Vector2(c.x, c.y - _char_height(who) - 6), enemy if who == "c" else you)
+	var now := Time.get_ticks_msec()
+	floats = floats.filter(func(f): return now - f.t0 < 1100)
+	for f in floats:
+		var o: Vector2 = Game.CH[f.w]
+		var c := _P(o.x + 1.5, o.y + 1.5)
+		var e: float = (now - f.t0) / 1100.0
+		var pos := Vector2(c.x + f.o, c.y - _char_height(f.w) - 56 - e * 28)
+		var w := font.get_string_size(f.t, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
+		var col := Color(0, 0, 0, 1.0 - e * e)
+		var halo := Color(1, 1, 1, 1.0 - e * e)
+		for dx in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				draw_string(font, pos + Vector2(dx - w / 2.0, dy), f.t, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, halo)
+		draw_string(font, pos + Vector2(-w / 2.0, 0), f.t, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, col)
+
+
+## A boxed tag whose bottom edge is at bottom_center.y, kept inside the screen.
+func _tag(bottom_center: Vector2, lines: Array) -> void:
+	var lh := 13.0
+	var w := 0.0
+	for l in lines:
+		w = maxf(w, font.get_string_size(l, HORIZONTAL_ALIGNMENT_LEFT, -1, TAG_SIZE).x)
+	w += 14.0
+	var h := lines.size() * lh + 8.0
+	var x := clampf(bottom_center.x - w / 2.0, 4.0, VIEW.x - w - 4.0)
+	var y := maxf(4.0, bottom_center.y - h)
+	var r := Rect2(Vector2(x, y).round(), Vector2(w, h))
+	draw_rect(r, Color.WHITE)
+	draw_rect(r, Color.BLACK, false, 1.0)
+	for i in lines.size():
+		var tw := font.get_string_size(lines[i], HORIZONTAL_ALIGNMENT_LEFT, -1, TAG_SIZE).x
+		draw_string(font, Vector2(r.position.x + (w - tw) / 2.0, r.position.y + 4 + lh * (i + 1) - 3), lines[i],
+				HORIZONTAL_ALIGNMENT_LEFT, -1, TAG_SIZE, Color.BLACK)
 
 
 func _label_box(center: Vector2, txt: String, ok: bool) -> void:
@@ -605,11 +818,40 @@ func _draw_tray() -> void:
 		var d: Dictionary = game.hand[i]
 		var c := _tray_center(i, n)
 		_draw_flat(c, d.ang, d.a, d.b, i == sel)
-		if not busy and not ended and pending == null and game.can_play(d):
+		if game.busy == 0 and not game.ended and pending == null and game.can_play(i):
 			var half := Vector2(28, 16) if posmod(int(d.ang / 90.0), 2) == 0 else Vector2(16, 28)
 			draw_rect(Rect2(c - half, half * 2), Color.BLACK if blink else Color(0.5, 0.5, 0.5), false, 2.0)
+		_draw_caps(Vector2(c.x, c.y + 36), game.caps(i))
 	if drag != null and not drag.on:
 		_draw_flat(get_global_mouse_position(), game.hand[drag.i].ang, drag.a, drag.b, true)
+
+
+## Effect icons with numbers, centred under a hand domino. A red X means it cannot be played.
+func _draw_caps(top_center: Vector2, chips: Array) -> void:
+	var widths := []
+	for ch in chips:
+		var tw := 0.0
+		if ch.num != "":
+			tw = font.get_string_size(ch.num, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x + 2
+		widths.append(Icons.SIZE + 1 + tw)
+	var row_y := top_center.y
+	var i := 0
+	while i < chips.size():
+		# put as many chips on this row as fit in a slot
+		var j := i
+		var rw := 0.0
+		while j < chips.size() and (j == i or rw + 4 + widths[j] <= SLOT + 8):
+			rw += widths[j] + (4 if j > i else 0)
+			j += 1
+		var x := top_center.x - rw / 2.0
+		for k in range(i, j):
+			Icons.draw(self, chips[k].k, Vector2(round(x), round(row_y)))
+			if chips[k].num != "":
+				draw_string(font, Vector2(round(x) + Icons.SIZE + 1, round(row_y) + 8), chips[k].num,
+						HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color.BLACK)
+			x += widths[k] + 4
+		row_y += 11
+		i = j
 
 
 ## Flat 48x24 domino for the hand. inverted = black body (selected / being dragged).
