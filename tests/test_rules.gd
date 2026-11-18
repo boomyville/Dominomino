@@ -6,9 +6,13 @@ extends SceneTree
 const Game = preload("res://scripts/game.gd")
 const Dominoes = preload("res://scripts/dominoes.gd")
 const NullUI = preload("res://scripts/null_ui.gd")
+const Domino = preload("res://scripts/domino.gd")
+const Foe = preload("res://scripts/foe.gd")
+const Combatant = preload("res://scripts/combatant.gd")
 
 var fails := 0
 var checks := 0
+var cat: Array = Dominoes.build()
 
 
 func expect(cond: bool, label: String) -> void:
@@ -31,23 +35,27 @@ func mki(x: int, y: int, rot: int, a: int, b: int, i: int) -> Dictionary:
 
 
 func ti(name: String) -> int:
-	for i in Dominoes.TY.size():
-		if Dominoes.TY[i].n == name:
+	for i in cat.size():
+		if cat[i].title == name:
 			return i
 	return -1
 
 
-func dom(name: String, a: int, b: int) -> Dictionary:
-	return {"a": a, "b": b, "t": ti(name), "ang": 0}
+func dom(name: String, a: int, b: int):
+	return Domino.new(cat[ti(name)], a, b)
+
+
+func garb():
+	return Domino.new(cat[Dominoes.GARBAGE], 0, 0)
 
 
 ## A game set up for testing one domino: 30/50 HP, a 200 HP enemy, 4 dominoes in the stack.
 func fresh() -> Game:
 	var g := Game.new()
 	g.pl.hp = 30
-	g.foe = Game.make_foe(1)
+	g.foe = Foe.new(1)
 	g.foe.hp = 200
-	g.foe.max = 200
+	g.foe.max_hp = 200
 	g.foe.intent = []
 	g.hand = []
 	g.stack = [dom("Slash", 1, 1), dom("Twin Fang", 2, 2), dom("Iron Guard", 3, 3), dom("Fortify", 4, 4)]
@@ -57,8 +65,8 @@ func fresh() -> Game:
 
 func run(g: Game, name: String, a: int, b: int) -> Dictionary:
 	await g.run_fx(dom(name, a, b))
-	return {"dealt": 200 - g.foe.hp, "hp": g.pl.hp, "sh": g.pl.sh, "max_sh": g.pl.max_sh, "pow": g.pl.pow,
-			"boost": g.pl.boost, "fury": g.pl.fury, "efury": g.foe.fury, "hand": g.hand.size(),
+	return {"dealt": 200 - g.foe.hp, "hp": g.pl.hp, "sh": g.pl.shield, "max_sh": g.pl.max_shield, "pow": g.pl.value("power"),
+			"boost": g.pl.value("boost"), "fury": g.pl.value("fury"), "efury": g.foe.value("fury"), "hand": g.hand.size(),
 			"stack": g.stack.size(), "disc": g.discard.size(), "lives": g.lives}
 
 
@@ -90,29 +98,59 @@ func _tests() -> void:
 		names[t.n] = true
 	expect(rc == {"c": 34, "u": 28, "r": 18, "g": 1}, "rarity counts 34 common / 28 uncommon / 18 rare %s" % rc)
 	expect(names.size() == 81, "all names are unique")
-	expect(Dominoes.TY[Dominoes.GARBAGE].n == "Garbage", "Garbage is the last entry")
+	expect(cat[Dominoes.GARBAGE].title == "Garbage" and cat[Dominoes.GARBAGE].is_garbage(), "Garbage is the last entry")
 	# every effect size matches the web build exactly (fixture dumped from index.html)
 	var fixture = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/domino_values.json"))
 	var bad := 0
 	for i in fixture.size():
 		var f = fixture[i]
 		var t = Dominoes.TY[i]
-		if f.n != t.n or f.r != t.r or f.c != t.c or f.fx.size() != t.fx.size():
+		var d = cat[i]
+		var cid: String = d.condition.id if d.condition != null else ""
+		if f.n != d.title or f.r != d.rarity or f.c != cid or f.fx.size() != d.effects.size():
 			bad += 1
 			continue
 		for j in f.fx.size():
-			var e = t.fx[j]
-			if f.fx[j].k != e.k or int(f.fx[j].t) != int(e.get("t", 0)):
+			var e = d.effects[j]
+			if f.fx[j].k != e.kind or int(f.fx[j].t) != int(t.fx[j].get("t", 0)):
 				bad += 1
 			for s in 13:
-				if int(f.fx[j].vals[s]) != Dominoes.val(e, s):
+				if int(f.fx[j].vals[s]) != e.value(s):
 					bad += 1
 	expect(bad == 0, "all 80 dominoes x 13 pip totals match the web build (%d mismatches)" % bad)
 	var allc := true
-	for t in Dominoes.TY:
-		if t.c != "" and not Dominoes.COND_TEXT.has(t.c):
+	for d in cat:
+		if d.condition != null and d.condition.text == "":
 			allc = false
 	expect(allc, "every play condition has text")
+
+	# ---------- Combatant and statuses ----------
+	var cb := Combatant.new(40)
+	expect(cb.hp == 40 and cb.max_hp == 40 and cb.shield == 0 and cb.max_shield == 9, "a Combatant starts at full HP, no shield, max shield 9")
+	cb.add("fury", 3)
+	cb.add("power", 2)
+	cb.add("boost", 4)
+	expect(cb.attack_damage(5) == 14, "Fury, Power and Boost all add to damage (5 + 3 + 2 + 4)")
+	expect(cb.status_lines() == ["Fury 3", "Power +2", "Boost +4"], "status lines in tag order %s" % [cb.status_lines()])
+	cb.finish_attack()
+	expect(cb.value("fury") == 2 and cb.value("power") == 2 and cb.value("boost") == 0, "after an attack: Fury ticks, Power stays, Boost is used up")
+	cb.add("fury", -6)
+	expect(cb.value("fury") == -4 and cb.status_lines()[0] == "Impair 4", "Impair is just negative Fury (2 - 6 = Impair 4)")
+	expect(cb.attack_damage(3) == 1 and cb.attack_damage(1) == 0, "Impair lowers damage but never below 0")
+	cb.finish_attack()
+	expect(cb.value("fury") == -3, "Impair ticks toward 0 too")
+	cb.shield = 5
+	var tk := cb.take_damage(8)
+	expect(tk.absorbed == 5 and tk.taken == 3 and cb.hp == 37 and cb.shield == 0, "shield soaks first, the rest hurts")
+	expect(cb.heal(10) == 3 and cb.hp == 40, "healing stops at max HP")
+	cb.lose_hp(100)
+	expect(cb.hp == 0, "HP never goes below 0")
+	expect(Foe.new(1).title == "Gruff Hare" and Foe.new(2).lv == 2 and Foe.new(7).title == "Hare Lord 7", "Foe has a level and a name")
+	expect(cat[ti("Slash")].has_attack() and not cat[ti("Iron Guard")].has_attack() and cat[ti("Twin Fang")].has_attack(), "DominoData knows which dominoes are attacks")
+	var orig = dom("Slash", 3, 4)
+	orig.ang = 180
+	var cp2 = orig.copy()
+	expect(cp2.a == 3 and cp2.b == 4 and cp2.ang == 0 and cp2.data == orig.data and cp2 != orig, "a Domino copy keeps kind and pips but starts unturned")
 
 	# ---------- board rules ----------
 	var g := Game.new()
@@ -170,24 +208,24 @@ func _tests() -> void:
 	# ---------- Fury / Impair ----------
 	g = fresh(); r = await run(g, "Rage Up", 3, 3);     expect(r.fury == 4, "Rage Up 3|3 gains 4 Fury")
 	g = fresh(); r = await run(g, "Sting", 3, 3);       expect(r.efury == -4, "Sting 3|3 puts 4 Impair on the enemy")
-	g = fresh(); g.pl.fury = 3; r = await run(g, "Slash", 3, 4)
+	g = fresh(); g.pl.add("fury", 3); r = await run(g, "Slash", 3, 4)
 	expect(r.dealt == 12 and r.fury == 2, "Fury adds to damage (9 + 3) and ticks down after an attack")
-	g = fresh(); g.pl.fury = -3; r = await run(g, "Slash", 3, 4)
+	g = fresh(); g.pl.add("fury", -3); r = await run(g, "Slash", 3, 4)
 	expect(r.dealt == 6 and r.fury == -2, "Impair subtracts (9 - 3) and ticks up toward 0")
-	g = fresh(); g.pl.fury = -9; r = await run(g, "Slash", 0, 0);  expect(r.dealt == 0, "damage never goes below 0")
-	g = fresh(); g.pl.fury = 3; r = await run(g, "Reckless Blow", 4, 4)
+	g = fresh(); g.pl.add("fury", -9); r = await run(g, "Slash", 0, 0);  expect(r.dealt == 0, "damage never goes below 0")
+	g = fresh(); g.pl.add("fury", 3); r = await run(g, "Reckless Blow", 4, 4)
 	expect(r.dealt == 21 and r.fury == -2, "3 Fury + 6 Impair on self nets 3 Impair, ticking to 2 (dealt %d, fury %d)" % [r.dealt, r.fury])
-	g = fresh(); g.pl.fury = -2; r = await run(g, "Rage Up", 0, 0); expect(r.fury == -1, "gaining Fury cancels Impair (no attack, no tick)")
+	g = fresh(); g.pl.add("fury", -2); r = await run(g, "Rage Up", 0, 0); expect(r.fury == -1, "gaining Fury cancels Impair (no attack, no tick)")
 	g = fresh(); r = await run(g, "Berserker", 2, 3);   expect(r.dealt == 12 and r.fury == 5, "Berserker 2|3: Fury 6 first, then 12 damage, ticks to 5")
 	g = fresh(); r = await run(g, "Blood Ward", 2, 3);  expect(r.sh == 10 and r.hp == 28, "Blood Ward 2|3: 10 shield, lose 2 HP")
 	g = fresh(); r = await run(g, "Blood Rage", 2, 3);  expect(r.fury == 5 and r.hp == 28, "Blood Rage 2|3: 5 Fury, lose 2 HP")
 	g = fresh(); r = await run(g, "Spare Parts", 2, 2); expect(r.stack == 5 and r.sh == 5, "Spare Parts adds a random domino to the stack")
 	g = fresh(); r = await run(g, "Second Chance", 3, 3); expect(r.lives == 5 and r.stack == 6, "Second Chance: +2 lives and 2 dominoes in the stack")
 	g = fresh(); r = await run(g, "Overwhelm", 3, 3);   expect(r.efury == -11 and r.boost == 10, "Overwhelm 3|3: 11 Impair on the enemy, Boost 10")
-	g = fresh(); g.pl.boost = 9; r = await run(g, "Slash", 3, 4)
+	g = fresh(); g.pl.add("boost", 9); r = await run(g, "Slash", 3, 4)
 	var second := await run(g, "Slash", 3, 4)
 	expect(r.dealt == 18 and r.boost == 0 and second.dealt - r.dealt == 9, "Boost is used up by the first attack: 18, then 9")
-	g = fresh(); g.pl.boost = 9; r = await run(g, "Mend", 3, 4); expect(r.boost == 9, "Boost is kept when the domino is not an attack")
+	g = fresh(); g.pl.add("boost", 9); r = await run(g, "Mend", 3, 4); expect(r.boost == 9, "Boost is kept when the domino is not an attack")
 	g = fresh(); await run(g, "War Cry", 4, 4); await run(g, "Slash", 3, 4); r = await run(g, "Slash", 3, 4)
 	expect(r.pow == 3, "Power stays after attacks")
 
@@ -213,7 +251,7 @@ func _tests() -> void:
 		g.hand = [dom(c[0], 3, 3)]
 		match c[1]:
 			"pl.sh":
-				g.pl.sh = c[2]
+				g.pl.shield = c[2]
 			"bat":
 				g.bat.hp_lost = true
 			"turn":
@@ -223,11 +261,11 @@ func _tests() -> void:
 			"hp":
 				g.pl.hp = c[2]
 			"fsh":
-				g.foe.sh = c[2]
+				g.foe.shield = c[2]
 		var before := g.cond_ok(0)
 		match c[1]:
 			"pl.sh":
-				g.pl.sh = c[3]
+				g.pl.shield = c[3]
 			"bat":
 				g.bat.hp_lost = false
 			"turn":
@@ -237,20 +275,20 @@ func _tests() -> void:
 			"hp":
 				g.pl.hp = c[3]
 			"fsh":
-				g.foe.sh = c[3]
+				g.foe.shield = c[3]
 		expect(not before and g.cond_ok(0), "%s: blocked, then playable" % c[0])
-	g = fresh(); g.hand = [{"a": 0, "b": 0, "t": Dominoes.GARBAGE, "ang": 0}]
+	g = fresh(); g.hand = [garb()]
 	expect(not g.can_play(0) and g.check_p(mki(12, 8, 0, 0, 0, 0)).why == "Garbage cannot be played", "Garbage can never be played")
 	g.hand = [dom("Second Skin", 3, 3)]
-	g.pl.sh = 5
+	g.pl.shield = 5
 	expect(g.check_p(mki(12, 8, 0, 3, 3, 0)).why.begins_with("Needs:") and not g.can_play(0), "an unmet condition blocks the drop and the highlight")
-	g.hand = [dom("Second Skin", 3, 3), {"a": 0, "b": 0, "t": Dominoes.GARBAGE, "ang": 0}, dom("Slash", 3, 4)]
-	g.pl.sh = 5
+	g.hand = [dom("Second Skin", 3, 3), garb(), dom("Slash", 3, 4)]
+	g.pl.shield = 5
 	var cp = [g.caps(0), g.caps(1), g.caps(2)]
 	expect(cp[0][0].k == "x" and cp[0][0].num == "13", "caption: unmet condition shows an X and keeps the number")
 	expect(cp[1][0].k == "x" and cp[1][0].num == "", "caption: Garbage shows only an X")
 	expect(cp[2][0].k == "dmg" and cp[2][0].num == "9", "caption: Slash 3|4 shows damage 9")
-	g.pl.sh = 0
+	g.pl.shield = 0
 	expect(g.caps(0)[0].k == "shield", "caption: the icon returns once the condition is met")
 
 	# ---------- hand, stack and discard ----------
@@ -286,7 +324,7 @@ func _tests() -> void:
 		var l0 := g.lives
 		await g.end_turn()
 		expect(g.pl.hp == c[1] and l0 - g.lives == c[2], "%s: HP %d, lives lost %d" % [c[0][0].k, g.pl.hp, l0 - g.lives])
-	g = Game.new(); g.played_this_turn = true; g.hand.resize(3); g.pl.sh = 9; g.pl.max_sh = 20; g.foe.intent = [{"k": "lifeatk", "v": 8}]
+	g = Game.new(); g.played_this_turn = true; g.hand.resize(3); g.pl.shield = 9; g.pl.max_shield = 20; g.foe.intent = [{"k": "lifeatk", "v": 8}]
 	await g.end_turn()
 	expect(g.lives == 3 and g.pl.hp == 50, "life-attack fully blocked: no life lost")
 	g = Game.new(); g.played_this_turn = true; g.hand.resize(3); g.foe.intent = [{"k": "discH"}]
@@ -297,23 +335,23 @@ func _tests() -> void:
 	await g.end_turn()
 	var gar := 0
 	for d in g.hand + g.stack + g.discard:
-		if d.t == Dominoes.GARBAGE:
+		if d.data.is_garbage():
 			gar += 1
 	expect(g.discard.size() == 1 and gar == 1, "mill: top stack domino discarded, 1 Garbage added")
 	g = Game.new(); g.played_this_turn = true; g.hand.resize(3); g.foe.intent = [{"k": "junk"}]
 	await g.end_turn()
 	gar = 0
 	for d in g.hand + g.stack + g.discard:
-		if d.t == Dominoes.GARBAGE:
+		if d.data.is_garbage():
 			gar += 1
 	expect(gar == 3, "junk: 3 Garbage shuffled into the stack")
-	g = Game.new(); g.played_this_turn = true; g.hand.resize(3); g.foe.fury = -3; g.foe.intent = [{"k": "atk", "v": 8}]
+	g = Game.new(); g.played_this_turn = true; g.hand.resize(3); g.foe.add("fury", -3); g.foe.intent = [{"k": "atk", "v": 8}]
 	expect(g.intent_text(g.foe.intent[0]) == "Attack 5", "intent shows the impaired damage")
 	await g.end_turn()
-	expect(g.pl.hp == 45 and g.foe.fury == -2, "enemy Impair reduces its attack and ticks down")
-	g = Game.new(); g.played_this_turn = true; g.hand.resize(3); g.foe.fury = -2; g.foe.intent = [{"k": "atk", "v": 4}, {"k": "atk", "v": 4}]
+	expect(g.pl.hp == 45 and g.foe.value("fury") == -2, "enemy Impair reduces its attack and ticks down")
+	g = Game.new(); g.played_this_turn = true; g.hand.resize(3); g.foe.add("fury", -2); g.foe.intent = [{"k": "atk", "v": 4}, {"k": "atk", "v": 4}]
 	await g.end_turn()
-	expect(g.pl.hp == 50 - (2 + 3) and g.foe.fury == 0, "Impair ticks per attack: 4-2 then 4-1")
+	expect(g.pl.hp == 50 - (2 + 3) and g.foe.value("fury") == 0, "Impair ticks per attack: 4-2 then 4-1")
 	var kinds := {}
 	var common := 0
 	var other := 0
@@ -340,7 +378,7 @@ func _tests() -> void:
 	await g.end_turn()
 	expect(g.lives == 2 and g.ui.flashes >= 1, "ending a turn with no play loses a life and flashes")
 	g = Game.new()
-	g.hand = [{"a": 0, "b": 0, "t": Dominoes.GARBAGE, "ang": 0}]
+	g.hand = [garb()]
 	g.stack = []
 	g.foe.intent = [{"k": "blk", "v": 3}]
 	await g.stuck_check()
@@ -363,11 +401,11 @@ func _tests() -> void:
 
 	# ---------- victory, reward, next battle ----------
 	g = Game.new()
-	g.pl.fury = 3
-	g.pl.pow = 4
-	g.pl.boost = 6
-	g.pl.max_sh = 14
-	g.pl.sh = 11
+	g.pl.add("fury", 3)
+	g.pl.add("power", 4)
+	g.pl.add("boost", 6)
+	g.pl.max_shield = 14
+	g.pl.shield = 11
 	g.pl.hp = 12
 	g.foe.hp = 1
 	g.hand = [dom("Slash", 6, 6)]
@@ -377,12 +415,12 @@ func _tests() -> void:
 	g.ui.picks = [1]
 	await g.play_domino(pm)
 	expect(g.battle_no == 2 and g.stats.battles == 1 and not g.ended, "victory starts battle 2")
-	expect(g.pl.hp == 50 and g.pl.fury == 0 and g.pl.pow == 0 and g.pl.boost == 0 and g.pl.max_sh == 9 and g.pl.sh == 0, "full heal and every status cleared")
+	expect(g.pl.hp == 50 and g.pl.value("fury") == 0 and g.pl.value("power") == 0 and g.pl.value("boost") == 0 and g.pl.max_shield == 9 and g.pl.shield == 0, "full heal and every status cleared")
 	expect(g.collection.size() == 21 and g.hand.size() + g.stack.size() == 21, "the chosen domino is added: 21 owned, all in the new stack and hand")
 	expect(g.placed.size() == 0 and g.discard.size() == 0 and g.hand.size() == 6, "board and discard pile cleared, a fresh hand of 6")
 	expect(g.foe.lv == 2 and g.foe.hp == 85, "the next enemy is stronger (HP %d)" % g.foe.hp)
 	expect(g.lives == 3, "lives carry over")
-	expect(Game.make_foe(1).hp < Game.make_foe(2).hp and Game.make_foe(2).hp < Game.make_foe(3).hp, "each enemy has more HP")
+	expect(Foe.new(1).hp < Foe.new(2).hp and Foe.new(2).hp < Foe.new(3).hp, "each enemy has more HP")
 	g = Game.new(); g.foe.hp = 1; g.hand = [dom("Slash", 6, 6)]; g.energy = 12
 	sp = find_spot(g, 6, 6)
 	pm = {"x": sp.x, "y": sp.y, "rot": sp.rot, "a": 6, "b": 6, "i": 0}

@@ -9,7 +9,6 @@ extends Node2D
 ##   res://images/domino_dot.png      2x2 black pixel
 
 const Game = preload("res://scripts/game.gd")
-const Dominoes = preload("res://scripts/dominoes.gd")
 const Icons = preload("res://scripts/icons.gd")
 
 const VIEW := Vector2(960, 540)
@@ -287,17 +286,17 @@ func _build_ui() -> void:
 
 
 ## One selectable domino card in the pick window.
-func _card(d: Dictionary, index: int) -> Button:
-	var def: Dictionary = Dominoes.TY[d.t]
+func _card(d, index: int) -> Button:
+	var def = d.data
 	var b := Button.new()
 	b.custom_minimum_size = Vector2(196, 104)
 	b.pressed.connect(_on_pick_chosen.bind(index))
-	var txt := "%s  [%d|%d]\n%s\n" % [def.n, d.a, d.b, Dominoes.RARITY_NAMES[def.r]]
+	var txt := "%s  [%d|%d]\n%s\n" % [def.title, d.a, d.b, def.rarity_name()]
 	var lines: Array = game.fx_lines(d)
 	if lines.size() > 0:
 		txt += ". ".join(lines) + "."
-	if def.c != "" and def.c != "never":
-		txt += "\nOnly if " + Dominoes.COND_TEXT[def.c]
+	if def.condition != null and def.condition.id != "never":
+		txt += "\nOnly if " + def.condition.text
 	var l := Label.new()
 	l.text = txt
 	l.position = Vector2(6, 4)
@@ -346,24 +345,18 @@ func _refresh_ui() -> void:
 
 
 func _preview_text(i: int) -> String:
-	var d: Dictionary = game.hand[i]
-	var def: Dictionary = Dominoes.TY[d.t]
-	var t := "%s  [%d|%d]\n%s, pip total %d\n" % [def.n, d.a, d.b, Dominoes.RARITY_NAMES[def.r], d.a + d.b]
+	var d = game.hand[i]
+	var def = d.data
+	var t := "%s  [%d|%d]\n%s, pip total %d\n" % [def.title, d.a, d.b, def.rarity_name(), d.total()]
 	for l in game.fx_lines(d):
 		t += l + ".\n"
-	if def.c == "never":
-		t += "Cannot be played.\n"
-	elif def.c != "":
-		t += "Only if %s%s.\n" % [Dominoes.COND_TEXT[def.c], "" if game.cond_ok(i) else " (not met)"]
-	var mods := []
-	if Dominoes.has_atk(def):
-		if game.pl.pow != 0:
-			mods.append("Power +%d" % game.pl.pow)
-		if game.pl.boost != 0:
-			mods.append("Boost +%d" % game.pl.boost)
-		if game.pl.fury != 0:
-			mods.append(Game.status_text(game.pl))
-	if mods.size() > 0:
+	if def.condition != null:
+		if def.condition.id == "never":
+			t += "Cannot be played.\n"
+		else:
+			t += "Only if %s%s.\n" % [def.condition.text, "" if game.cond_ok(i) else " (not met)"]
+	var mods: Array = game.pl.status_lines()
+	if def.has_attack() and mods.size() > 0:
 		t += "Includes " + ", ".join(mods)
 	return t
 
@@ -520,7 +513,7 @@ func _motion(pos: Vector2) -> void:
 		return
 	if press != null and drag == null and pos.distance_to(press.start) > 8:
 		sel = press.i
-		var d: Dictionary = game.hand[sel]
+		var d = game.hand[sel]
 		drag = {"i": sel, "x": 0, "y": 0, "rot": posmod(int(d.ang / 90.0), 4), "a": d.a, "b": d.b, "on": false}
 		_refresh_ui()
 	if drag != null:
@@ -742,24 +735,14 @@ func _draw_char(who: String) -> void:
 
 ## HP / shield / status / intent tags above each character, plus floating numbers.
 func _draw_tags() -> void:
-	var foe: Dictionary = game.foe
-	var pl: Dictionary = game.pl
-	var enemy := ["%s  LV %d  HP %d/%d" % [foe.name.to_upper(), foe.lv, foe.hp, foe.max]]
-	var l2 := ["Shield %d" % foe.sh]
-	if Game.status_text(foe) != "":
-		l2.append(Game.status_text(foe))
-	enemy.append("   ".join(l2))
+	var foe = game.foe
+	var pl = game.pl
+	var enemy := ["%s  LV %d  HP %d/%d" % [foe.title.to_upper(), foe.lv, foe.hp, foe.max_hp]]
+	enemy.append("   ".join(["Shield %d" % foe.shield] + foe.status_lines()))
 	for it in foe.intent:
 		enemy.append("> " + game.intent_text(it))
-	var you := ["YOU  HP %d/%d" % [pl.hp, pl.max]]
-	var y2 := ["Shield %d/%d" % [pl.sh, pl.max_sh]]
-	if Game.status_text(pl) != "":
-		y2.append(Game.status_text(pl))
-	if pl.pow != 0:
-		y2.append("Power +%d" % pl.pow)
-	if pl.boost != 0:
-		y2.append("Boost +%d" % pl.boost)
-	you.append("   ".join(y2))
+	var you := ["YOU  HP %d/%d" % [pl.hp, pl.max_hp]]
+	you.append("   ".join(["Shield %d/%d" % [pl.shield, pl.max_shield]] + pl.status_lines()))
 	for who in ["c", "p"]:
 		var o: Vector2 = Game.CH[who]
 		var c := _P(o.x + 1.5, o.y + 1.5)
@@ -815,7 +798,7 @@ func _draw_tray() -> void:
 	for i in n:
 		if (drag != null and drag.i == i) or (pending != null and pending.i == i):
 			continue
-		var d: Dictionary = game.hand[i]
+		var d = game.hand[i]
 		var c := _tray_center(i, n)
 		_draw_flat(c, d.ang, d.a, d.b, i == sel)
 		if game.busy == 0 and not game.ended and pending == null and game.can_play(i):

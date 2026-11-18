@@ -1,9 +1,18 @@
 extends RefCounted
 ## Game state, rules and turn flow. No nodes in here, so it can run headless (see tests/test_rules.gd).
 ## Everything the player would see or wait for goes through the ui object (main.gd, or NullUI in tests).
+##
+## The pieces it is built from:
+##   Dominoes (table) -> DominoData (a kind of domino) -> Effect / Condition objects (what it does)
+##   Domino            one domino you hold: its kind plus its own pips
+##   Combatant / Foe   HP, shield and statuses (Fury, Power, Boost) for the player and the enemy
+##   Status            one status; children of status.gd
 ## Ported from the web build (index.html).
 
 const Dominoes = preload("res://scripts/dominoes.gd")
+const Domino = preload("res://scripts/domino.gd")
+const Combatant = preload("res://scripts/combatant.gd")
+const Foe = preload("res://scripts/foe.gd")
 const NullUI = preload("res://scripts/null_ui.gd")
 
 const N := 20
@@ -15,9 +24,9 @@ const DRAW_PER_TURN := 4
 const DIRS := [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]
 ## Top-left cell of each 3x3 character footprint. They mirror each other through the board centre.
 const CH := {"p": Vector2(14, 8), "c": Vector2(3, 9)}
-const FOE_NAMES := ["Gruff Hare", "Bone Rabbit", "Iron Hare", "Void Rabbit", "Warlord Hare"]
 
 var ui = NullUI.new()
+var data: Array = Dominoes.build()    # the catalogue: one DominoData per kind of domino
 
 # board
 var occ := {}          # Vector2 cell -> {id, owner, pip}
@@ -25,13 +34,13 @@ var chars := {}        # Vector2 cell -> "p" | "c"
 var placed := []       # every domino on the board: {x, y, rot, a, b, owner}
 # dominoes. Played dominoes stay on the board and discarded ones stay in the discard pile:
 # neither comes back during a battle. Each battle the stack is rebuilt from your collection.
-var collection := []   # every domino you own: {a, b, t}
+var collection := []   # every Domino you own
 var stack := []        # draw pile (top = last)
 var discard := []
-var hand := []         # {a, b, t, ang}
+var hand := []
 # battle
-var pl := {}
-var foe := {}
+var pl                 # Combatant: you
+var foe                # Foe: the enemy
 var bat := {}
 var energy := MAXE
 var lives := START_LIVES
@@ -57,19 +66,9 @@ func new_game() -> void:
 	lives = START_LIVES
 	ended = false
 	reason = ""
-	pl = new_pl()
-	foe = make_foe(1)
+	pl = Combatant.new(50)
+	foe = Foe.new(1)
 	start_battle()
-
-
-static func new_pl() -> Dictionary:
-	return {"hp": 50, "max": 50, "sh": 0, "max_sh": 9, "pow": 0, "boost": 0, "fury": 0}
-
-
-static func make_foe(n: int) -> Dictionary:
-	var hp := 70 + (n - 1) * 10 + (n - 1) * (n - 1) * 5
-	var nm: String = FOE_NAMES[n - 1] if n <= FOE_NAMES.size() else "Hare Lord %d" % n
-	return {"hp": hp, "max": hp, "sh": 0, "fury": 0, "intent": [], "lv": n, "name": nm}
 
 
 static func new_stats() -> Dictionary:
@@ -79,20 +78,27 @@ static func new_stats() -> Dictionary:
 			"t0": Time.get_ticks_msec(), "t1": 0}
 
 
-## The starting deck is the first 20 dominoes of the catalogue with random pips.
-static func starter_collection() -> Array:
+# ---- making dominoes ------------------------------------------------------
+
+func make_domino(type_id: int, pips_a: int, pips_b: int):
+	return Domino.new(data[type_id], pips_a, pips_b)
+
+
+## A random domino of a random kind (never Garbage), with random pips.
+func new_domino():
+	return make_domino(Dominoes.rand_type(), randi() % 7, randi() % 7)
+
+
+func garbage():
+	return make_domino(Dominoes.GARBAGE, 0, 0)
+
+
+## The starting deck is the first 20 kinds of the catalogue with random pips.
+func starter_collection() -> Array:
 	var out := []
 	for i in 20:
-		out.append({"a": randi() % 7, "b": randi() % 7, "t": i})
+		out.append(make_domino(i, randi() % 7, randi() % 7))
 	return out
-
-
-static func new_domino() -> Dictionary:
-	return {"a": randi() % 7, "b": randi() % 7, "t": Dominoes.rand_type(), "ang": 0}
-
-
-static func garbage() -> Dictionary:
-	return {"a": 0, "b": 0, "t": Dominoes.GARBAGE, "ang": 0}
 
 
 func start_battle() -> void:
@@ -109,7 +115,7 @@ func start_battle() -> void:
 	bat = {"played": 0, "hp_lost": false, "turn": 1}
 	stack.clear()
 	for d in collection:
-		stack.append({"a": d.a, "b": d.b, "t": d.t, "ang": 0})
+		stack.append(d.copy())
 	stack.shuffle()
 	discard.clear()
 	hand.clear()
@@ -118,7 +124,7 @@ func start_battle() -> void:
 	busy = 0
 
 
-# ---- drawing dominoes -----------------------------------------------------
+# ---- the hand, stack and discard pile -------------------------------------
 
 ## Draws one domino from the stack. Nothing is drawn if the hand is full (max 12) or the stack is empty.
 func draw_one() -> bool:
@@ -127,7 +133,7 @@ func draw_one() -> bool:
 		return false
 	if stack.is_empty():
 		return false
-	var d: Dictionary = stack.pop_back()
+	var d = stack.pop_back()
 	d.ang = 0
 	hand.append(d)
 	stats.drawn += 1
@@ -141,6 +147,67 @@ func draw(n: int) -> int:
 		if draw_one():
 			k += 1
 	return k
+
+
+## Tell the UI which card was just added to the hand. Kept as its own function because arithmetic
+## written inline right after an await hit a Godot 4.1 to 4.4 bug (it read a stale temporary).
+func announce_new_card() -> void:
+	ui.fresh(hand.size() - 1)
+
+
+## Discard a random domino from the hand. Returns false if the hand is empty.
+func discard_random_from_hand() -> bool:
+	if hand.is_empty():
+		return false
+	discard.append(hand.pop_at(randi() % hand.size()))
+	_cache.clear()
+	return true
+
+
+func discard_hand_card(index: int) -> void:
+	discard.append(hand.pop_at(maxi(index, 0)))
+	_cache.clear()
+	ui.refresh()
+
+
+func reroll_hand() -> void:
+	for d in hand:
+		d.a = randi() % 7
+		d.b = randi() % 7
+	stats.rerolls += hand.size()
+	_cache.clear()
+	ui.float_text("p", "Rerolled hand")
+
+
+func reroll_card(index: int) -> void:
+	var d = hand[maxi(index, 0)]
+	d.a = randi() % 7
+	d.b = randi() % 7
+	stats.rerolls += 1
+	_cache.clear()
+
+
+func generate_into_stack(n: int) -> void:
+	for i in n:
+		stack.insert(randi() % (stack.size() + 1), new_domino())
+
+
+## Indices of the stack, sorted by domino name (so the stack order is not revealed).
+func stack_order_by_title() -> Array:
+	var idx := range(stack.size())
+	idx.sort_custom(func(p, q): return stack[p].data.title < stack[q].data.title)
+	return idx
+
+
+## Move the chosen domino (position c in the sorted list) from the stack into the hand.
+func tutor_take(order: Array, c: int) -> void:
+	var got = stack.pop_at(order[maxi(c, 0)])
+	got.ang = 0
+	hand.append(got)
+	announce_new_card()
+	ui.refresh()
+	await ui.pause(0.3)
+	ui.fresh(-1)
 
 
 # ---- geometry -------------------------------------------------------------
@@ -214,47 +281,18 @@ func check(m: Dictionary, free := false, who := "p") -> Dictionary:
 ## Board check plus the domino's own play condition. m.i is the index of the domino in hand.
 func check_p(m: Dictionary) -> Dictionary:
 	if m.has("i") and m.i >= 0 and m.i < hand.size():
-		var def: Dictionary = Dominoes.TY[hand[m.i].t]
 		if not cond_ok(m.i):
-			if def.c == "never":
+			var c = hand[m.i].data.condition
+			if c.id == "never":
 				return {"ok": false, "why": "Garbage cannot be played"}
-			return {"ok": false, "why": "Needs: " + Dominoes.COND_TEXT[def.c]}
+			return {"ok": false, "why": "Needs: " + c.text}
 	return check(m)
 
 
 ## Does the hand domino at index i meet its play condition right now?
 func cond_ok(i: int) -> bool:
-	var c: String = Dominoes.TY[hand[i].t].c
-	if c == "":
-		return true
-	match c:
-		"noSix":
-			for j in hand.size():
-				if j != i and (hand[j].a == 6 or hand[j].b == 6):
-					return false
-			return true
-		"hand6":
-			return hand.size() >= 6
-		"handLe3":
-			return hand.size() <= 3
-		"noShield":
-			return pl.sh == 0
-		"noAtk":
-			for j in hand.size():
-				if j != i and Dominoes.has_atk(Dominoes.TY[hand[j].t]):
-					return false
-			return true
-		"noHpLost":
-			return not bat.hp_lost
-		"first":
-			return not played_this_turn
-		"played9":
-			return bat.played >= 9
-		"lowHp":
-			return pl.hp * 2 <= pl.max
-		"enShield":
-			return foe.sh > 0
-	return false    # "never" (Garbage)
+	var c = hand[i].data.condition
+	return c == null or c.met(self, i)
 
 
 ## Is there a legal spot on the board for these pips? Cached until the board or energy changes.
@@ -300,143 +338,25 @@ func place(m: Dictionary, who: String) -> void:
 	_cache.clear()
 
 
-# ---- status / text --------------------------------------------------------
-
-# Godot 4.1 to 4.4 pass the wrong arguments to a script's own static functions when they are called
-# from a coroutine after an await. Code that awaits (play_domino, run_fx, end_turn, stuck_check,
-# battle_won) therefore uses these small instance wrappers instead of calling the static helpers directly.
-func _foe(n: int) -> Dictionary:
-	return make_foe(n)
-
-
-func _pl() -> Dictionary:
-	return new_pl()
-
-
-func _garb() -> Dictionary:
-	return garbage()
-
-
-func _dom() -> Dictionary:
-	return new_domino()
-
-
-func _tick(o: Dictionary) -> void:
-	tick(o)
-
-
-func _status(o: Dictionary) -> String:
-	return status_text(o)
-
-
-## Announce the card that was just added to the hand. Kept as its own function because arithmetic
-## written inline right after an await hit a Godot 4.1 to 4.4 bug (it read a stale temporary).
-func _announce_new_card() -> void:
-	ui.fresh(hand.size() - 1)
-
-
-## Start-of-turn bookkeeping, in a normal function for the same reason.
-func _new_turn_state() -> void:
-	stats.turn += 1
-	bat.turn += 1
-	energy = MAXE
-	played_this_turn = false
-	if pl.sh > pl.max_sh:
-		pl.sh = pl.max_sh
-		ui.float_text("p", "Excess shield lost")
-	new_intent()
-	_cache.clear()
-
-
-static func status_text(o: Dictionary) -> String:
-	if o.fury > 0:
-		return "Fury %d" % o.fury
-	if o.fury < 0:
-		return "Impair %d" % (-o.fury)
-	return ""
-
-
-## Fury and Impair tick one step toward 0 after every attack.
-static func tick(o: Dictionary) -> void:
-	if o.fury > 0:
-		o.fury -= 1
-	elif o.fury < 0:
-		o.fury += 1
-
+# ---- text for the UI ------------------------------------------------------
 
 ## One line of text per effect, with your current Power / Boost / Fury already added to damage.
-func fx_lines(d: Dictionary) -> Array:
-	var def: Dictionary = Dominoes.TY[d.t]
-	var s: int = d.a + d.b
-	var bo: int = pl.boost if Dominoes.has_atk(def) else 0
+func fx_lines(d) -> Array:
 	var out := []
-	for e in def.fx:
-		var v := Dominoes.val(e, s)
-		var n := maxi(0, v + pl.pow + bo + pl.fury)
-		match e.k:
-			"dmg":
-				out.append("Deal %d damage" % n)
-			"hit":
-				out.append("Deal %d damage x%d" % [n, e.t])
-			"shield":
-				out.append("Gain %d shield" % v)
-			"maxs":
-				out.append("Max shield +%d" % v)
-			"draw":
-				out.append("Draw %d" % v)
-			"discR":
-				out.append("Discard %d at random" % v)
-			"discP":
-				out.append("Discard %d of your choice" % v)
-			"tutor":
-				out.append("Find a domino in your stack and add it to your hand")
-			"power":
-				out.append("Gain %d Power" % v)
-			"boost":
-				out.append("Gain %d Boost" % v)
-			"heal":
-				out.append("Heal %d" % v)
-			"rerollA":
-				out.append("Reroll all dominoes in hand")
-			"rerollP":
-				out.append("Reroll a domino of your choice")
-			"fury":
-				out.append("Gain %d Fury" % v)
-			"impS":
-				out.append("Apply %d Impair to yourself" % v)
-			"impE":
-				out.append("Apply %d Impair to the enemy" % v)
-			"selfdmg":
-				out.append("Lose %d HP" % v)
-			"gen":
-				out.append("Add %d random domino%s to your stack" % [v, "es" if v > 1 else ""])
-			"life":
-				out.append("Gain %d lives" % v)
+	for e in d.data.effects:
+		out.append(e.text(self, d.total()))
 	return out
 
 
 ## Icon + number chips shown under a hand domino. A red X ("x") replaces the icon when the
 ## play condition is not met, and for Garbage.
 func caps(i: int) -> Array:
-	var d: Dictionary = hand[i]
-	var def: Dictionary = Dominoes.TY[d.t]
-	if def.r == "g":
+	var d = hand[i]
+	if d.data.is_garbage():
 		return [{"k": "x", "num": ""}]
-	var s: int = d.a + d.b
-	var bo: int = pl.boost if Dominoes.has_atk(def) else 0
 	var chips := []
-	for e in def.fx:
-		var v := Dominoes.val(e, s)
-		var n := maxi(0, v + pl.pow + bo + pl.fury)
-		var num := ""
-		if e.has("m"):
-			if e.k == "hit":
-				num = "%dx%d" % [n, e.t]
-			elif e.k == "dmg":
-				num = str(n)
-			else:
-				num = str(v)
-		chips.append({"k": e.k, "num": num})
+	for e in d.data.effects:
+		chips.append({"k": e.kind, "num": e.caption(self, d.total())})
 	if not cond_ok(i):
 		return [{"k": "x", "num": chips[0].num if chips.size() > 0 else ""}]
 	return chips
@@ -445,9 +365,9 @@ func caps(i: int) -> Array:
 func intent_text(it: Dictionary) -> String:
 	match it.k:
 		"atk":
-			return "Attack %d" % maxi(0, it.v + foe.fury)
+			return "Attack %d" % foe.attack_damage(it.v)
 		"lifeatk":
-			return "Attack %d (lose a life if unblocked)" % maxi(0, it.v + foe.fury)
+			return "Attack %d (lose a life if unblocked)" % foe.attack_damage(it.v)
 		"blk":
 			return "Block %d" % it.v
 		"discH":
@@ -460,28 +380,20 @@ func intent_text(it: Dictionary) -> String:
 # ---- combat ---------------------------------------------------------------
 
 func hit_foe(n: int) -> void:
-	n = maxi(0, n)
-	var ab := mini(foe.sh, n)
-	var dm := n - ab
-	foe.sh -= ab
-	foe.hp = maxi(0, foe.hp - dm)
-	stats.dealt += dm
-	ui.float_text("c", "-%d" % dm if dm > 0 else "Blocked")
+	var r: Dictionary = foe.take_damage(n)
+	stats.dealt += r.taken
+	ui.float_text("c", "-%d" % r.taken if r.taken > 0 else "Blocked")
 
 
 ## Returns the damage that got through the shield.
 func hit_pl(n: int) -> int:
-	n = maxi(0, n)
-	var ab := mini(pl.sh, n)
-	var dm := n - ab
-	pl.sh -= ab
-	pl.hp = maxi(0, pl.hp - dm)
-	stats.taken += dm
-	stats.absorbed += ab
-	if dm > 0:
+	var r: Dictionary = pl.take_damage(n)
+	stats.taken += r.taken
+	stats.absorbed += r.absorbed
+	if r.taken > 0:
 		bat.hp_lost = true
-	ui.float_text("p", "-%d HP" % dm if dm > 0 else "Blocked")
-	return dm
+	ui.float_text("p", "-%d HP" % r.taken if r.taken > 0 else "Blocked")
+	return r.taken
 
 
 func lose_life() -> void:
@@ -585,7 +497,7 @@ func play_domino(m: Dictionary) -> void:
 	played_this_turn = true
 	ui.swing("p")
 	# the played domino stays on the board: it does not go to the discard pile
-	var d: Dictionary = hand[m.i]
+	var d = hand[m.i]
 	hand.remove_at(m.i)
 	bat.played += 1
 	busy = 2
@@ -608,120 +520,17 @@ func play_domino(m: Dictionary) -> void:
 	ui.refresh()
 
 
-func run_fx(d: Dictionary) -> void:
-	var s: int = d.a + d.b
-	var def: Dictionary = Dominoes.TY[d.t]
-	var atk := Dominoes.has_atk(def)
-	var bo: int = pl.boost if atk else 0
-	for e in def.fx:
+## Play every effect of a domino in order. The effects themselves live in scripts/effects/.
+func run_fx(d) -> void:
+	for e in d.data.effects:
 		if foe.hp <= 0 or pl.hp <= 0:
 			break
-		var v := Dominoes.val(e, s)
-		var dm := maxi(0, v + pl.pow + bo + pl.fury)
-		match e.k:
-			"dmg":
-				hit_foe(dm)
-			"hit":
-				var i := 0
-				while i < e.t and foe.hp > 0:
-					hit_foe(dm)
-					ui.refresh()
-					await ui.pause(0.26)
-					i += 1
-			"shield":
-				pl.sh += v
-				stats.shield += v
-				ui.float_text("p", "+%d shield" % v)
-			"maxs":
-				pl.max_sh += v
-				ui.float_text("p", "Max shield +%d" % v)
-			"draw":
-				for i in v:
-					if draw_one():
-						_announce_new_card()
-					ui.refresh()
-					await ui.pause(0.22)
-				ui.fresh(-1)
-			"discR":
-				for i in v:
-					if hand.size() > 0:
-						discard.append(hand.pop_at(randi() % hand.size()))
-			"discP":
-				for i in v:
-					if hand.size() > 0:
-						var c: int = await ui.pick("Discard a domino", "Choose a domino from your hand to discard.", hand.duplicate())
-						discard.append(hand.pop_at(maxi(c, 0)))
-						ui.refresh()
-			"tutor":
-				if stack.is_empty():
-					ui.toast("Your stack is empty")
-				elif hand.size() >= MAXH:
-					ui.hand_full()
-				else:
-					var idx := range(stack.size())
-					idx.sort_custom(func(p, q): return Dominoes.TY[stack[p].t].n < Dominoes.TY[stack[q].t].n)
-					var list := []
-					for k in idx:
-						list.append(stack[k])
-					var c: int = await ui.pick("Find a domino", "Choose a domino from your stack to add to your hand.", list)
-					var got: Dictionary = stack.pop_at(idx[maxi(c, 0)])
-					got.ang = 0
-					hand.append(got)
-					_announce_new_card()
-					ui.refresh()
-					await ui.pause(0.3)
-					ui.fresh(-1)
-			"power":
-				pl.pow += v
-				ui.float_text("p", "Power +%d" % v)
-			"boost":
-				pl.boost += v
-				ui.float_text("p", "Boost +%d" % v)
-			"heal":
-				var h := mini(v, pl.max - pl.hp)
-				pl.hp += h
-				stats.healed += h
-				ui.float_text("p", "+%d HP" % h)
-			"rerollA":
-				for h in hand:
-					h.a = randi() % 7
-					h.b = randi() % 7
-				stats.rerolls += hand.size()
-				ui.float_text("p", "Rerolled hand")
-			"rerollP":
-				if hand.size() > 0:
-					var c: int = await ui.pick("Reroll a domino", "Choose a domino from your hand to reroll.", hand.duplicate())
-					c = maxi(c, 0)
-					hand[c].a = randi() % 7
-					hand[c].b = randi() % 7
-					stats.rerolls += 1
-			"fury":
-				pl.fury += v
-				ui.float_text("p", _status(pl) if pl.fury != 0 else "Fury 0")
-			"impS":
-				pl.fury -= v
-				ui.float_text("p", _status(pl) if pl.fury != 0 else "Fury 0")
-			"impE":
-				foe.fury -= v
-				ui.float_text("c", _status(foe) if foe.fury != 0 else "Fury 0")
-			"selfdmg":
-				pl.hp = maxi(0, pl.hp - v)
-				stats.selfdmg += v
-				bat.hp_lost = true
-				ui.float_text("p", "-%d HP" % v)
-			"gen":
-				for i in v:
-					stack.insert(randi() % (stack.size() + 1), _dom())
-				ui.float_text("p", "+%d in stack" % v)
-			"life":
-				lives += v
-				ui.float_text("p", "+%d lives" % v)
+		await e.apply(self, d, d.total())
 		_cache.clear()
 		ui.refresh()
 		await ui.pause(0.16)
-	if atk:
-		_tick(pl)
-		pl.boost = 0     # Boost is used up by the next attack (Power stays until the battle ends)
+	if d.data.has_attack():
+		pl.finish_attack()     # Fury / Impair tick down, Boost is used up (Power stays until the battle ends)
 	_cache.clear()
 
 
@@ -745,34 +554,11 @@ func end_turn() -> void:
 		if lives <= 0:
 			finish("You ran out of lives")
 			return
-	foe.sh = 0
+	foe.shield = 0
 	for it in foe.intent.duplicate():
 		await ui.pause(0.5)
 		cpu_play()
-		match it.k:
-			"atk", "lifeatk":
-				var dm := hit_pl(maxi(0, it.v + foe.fury))
-				_tick(foe)
-				if it.k == "lifeatk" and dm > 0:
-					await ui.pause(0.25)
-					lose_life()
-			"blk":
-				foe.sh += it.v
-				ui.float_text("c", "+%d shield" % it.v)
-			"discH":
-				if hand.size() > 0:
-					discard.append(hand.pop_at(randi() % hand.size()))
-					ui.float_text("p", "Domino discarded")
-			"mill":
-				if stack.size() > 0:
-					discard.append(stack.pop_back())
-				stack.append(_garb())
-				ui.float_text("p", "Garbage on your stack")
-			"junk":
-				for i in 3:
-					stack.append(_garb())
-				stack.shuffle()
-				ui.float_text("p", "3 Garbage shuffled in")
+		_enemy_act(it)
 		_cache.clear()
 		ui.refresh()
 		if pl.hp <= 0:
@@ -786,7 +572,7 @@ func end_turn() -> void:
 	ui.refresh()
 	for i in DRAW_PER_TURN:
 		if draw_one():
-			_announce_new_card()
+			announce_new_card()
 		ui.refresh()
 		await ui.pause(0.38)
 	ui.fresh(-1)
@@ -794,6 +580,45 @@ func end_turn() -> void:
 	ui.note_play()
 	ui.refresh()
 	await stuck_check()
+
+
+## One planned enemy action. A normal function (no waiting) on purpose, see announce_new_card.
+func _enemy_act(it: Dictionary) -> void:
+	match it.k:
+		"atk", "lifeatk":
+			var taken := hit_pl(foe.attack_damage(it.v))
+			foe.finish_attack()
+			if it.k == "lifeatk" and taken > 0:
+				lose_life()
+		"blk":
+			foe.shield += it.v
+			ui.float_text("c", "+%d shield" % it.v)
+		"discH":
+			if discard_random_from_hand():
+				ui.float_text("p", "Domino discarded")
+		"mill":
+			if stack.size() > 0:
+				discard.append(stack.pop_back())
+			stack.append(garbage())
+			ui.float_text("p", "Garbage on your stack")
+		"junk":
+			for i in 3:
+				stack.append(garbage())
+			stack.shuffle()
+			ui.float_text("p", "3 Garbage shuffled in")
+
+
+## Start-of-turn bookkeeping, in a normal function for the same reason.
+func _new_turn_state() -> void:
+	stats.turn += 1
+	bat.turn += 1
+	energy = MAXE
+	played_this_turn = false
+	if pl.shield > pl.max_shield:
+		pl.shield = pl.max_shield
+		ui.float_text("p", "Excess shield lost")
+	new_intent()
+	_cache.clear()
 
 
 ## At the start of a battle or a turn, if nothing in hand can be played you lose a life and the turn passes.
@@ -821,7 +646,7 @@ func battle_won() -> void:
 
 func _begin_reward() -> Array:
 	stats.battles += 1
-	pl = new_pl()
+	pl = Combatant.new(50)      # a fresh Combatant: full HP, no shield, no statuses, max shield back to 9
 	ui.refresh()
 	var opts := []
 	for i in 3:
@@ -831,9 +656,9 @@ func _begin_reward() -> Array:
 
 func _start_next_battle(c: int, opts: Array) -> void:
 	if c >= 0:
-		collection.append({"a": opts[c].a, "b": opts[c].b, "t": opts[c].t})
+		collection.append(opts[c].copy())
 	battle_no += 1
-	foe = make_foe(battle_no)
+	foe = Foe.new(battle_no)
 	start_battle()
 	ui.refresh()
 

@@ -1,6 +1,7 @@
 extends RefCounted
 ## The domino catalogue: 80 dominoes plus Garbage (the last entry).
 ## Ported from the web build (index.html). Edit the numbers here to rebalance.
+## build() turns this table into DominoData objects (with Effect and Condition objects inside).
 ##
 ## Each domino: {"n": name, "r": rarity (c, u, r, g), "c": play condition id ("" = always playable), "fx": [effects]}
 ## Each effect: {"k": kind, "m": value mode, "a": a, "b": b, "t": hit count}
@@ -12,23 +13,6 @@ extends RefCounted
 ##   dmg hit(t hits)  shield  maxs (max shield)  draw  discR (discard random)  discP (discard of your choice)
 ##   tutor (find in stack)  power  boost  heal  rerollA (all in hand)  rerollP (one of your choice)
 ##   fury  impS (impair yourself)  impE (impair the enemy)  selfdmg (lose HP)  gen (add random dominoes to stack)  life
-
-const RARITY_NAMES := {"c": "Common", "u": "Uncommon", "r": "Rare", "g": "Junk"}
-
-## Play conditions (the rule itself lives in game.gd, cond_ok)
-const COND_TEXT := {
-	"noSix": "you have no 6 pips in hand",
-	"hand6": "you hold 6 or more dominoes",
-	"handLe3": "you hold 3 or fewer dominoes",
-	"noShield": "you have no shield",
-	"noAtk": "you have no attack dominoes in hand",
-	"noHpLost": "you have not lost HP this battle",
-	"first": "no domino has been played yet this turn",
-	"played9": "you have played 9 or more dominoes this battle",
-	"lowHp": "your HP is half or less",
-	"enShield": "the enemy has shield",
-	"never": "cannot be played",
-}
 
 const TY := [
 	{"n": "Slash", "r": "c", "c": "", "fx": [{"k": "dmg", "m": "S", "a": 1, "b": 2}]},
@@ -116,27 +100,25 @@ const TY := [
 
 const GARBAGE := 80
 
-
-static func val(e: Dictionary, s: int) -> int:
-	match e.get("m", "N"):
-		"S":
-			return int(s * e.a + e.b)
-		"C":
-			return int(ceil(s / float(e.a))) + int(e.b)
-		"F":
-			return int(floor(s / float(e.a))) + int(e.b)
-		"K":
-			return int(e.b)
-		"L":
-			return maxi(1, int(round(e.a * s + e.b)))
-	return 0
+const DominoData = preload("res://scripts/domino_data.gd")
+const EffectFactory = preload("res://scripts/effects/effect_factory.gd")
+const ConditionFactory = preload("res://scripts/conditions/condition_factory.gd")
 
 
-static func has_atk(def: Dictionary) -> bool:
-	for e in def.fx:
-		if e.k == "dmg" or e.k == "hit":
-			return true
-	return false
+## Build the catalogue: one DominoData per row of TY (the Garbage entry is the last).
+static func build() -> Array:
+	var out := []
+	for i in TY.size():
+		var row: Dictionary = TY[i]
+		var d = DominoData.new()
+		d.id = i
+		d.title = row.n
+		d.rarity = row.r
+		d.condition = ConditionFactory.make(row.c)
+		for e in row.fx:
+			d.effects.append(EffectFactory.make(e))
+		out.append(d)
+	return out
 
 
 ## Random domino type by rarity: 60% common, 30% uncommon, 10% rare (never Garbage).
