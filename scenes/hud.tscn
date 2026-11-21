@@ -1,0 +1,250 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Theme" path="res://themes/main_theme.tres" id="theme"]
+[ext_resource type="Script" path="res://scripts/hud.gd" id="hud"]
+[ext_resource type="PackedScene" path="res://scenes/combatant_tag.tscn" id="tag"]
+[ext_resource type="PackedScene" path="res://scenes/flat_domino.tscn" id="flat"]
+[ext_resource type="PackedScene" path="res://scenes/pick_window.tscn" id="pick"]
+[ext_resource type="PackedScene" path="res://scenes/game_over_window.tscn" id="over"]
+
+[sub_resource type="StyleBoxFlat" id="tray_style"]
+bg_color = Color(1, 1, 1, 1)
+border_width_top = 2
+border_color = Color(0, 0, 0, 1)
+
+[node name="Hud" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("theme")
+script = ExtResource("hud")
+
+[node name="Layout" type="VBoxContainer" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
+
+[node name="TopMargin" type="MarginContainer" parent="Layout"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 0
+
+[node name="TopBar" type="HBoxContainer" parent="Layout/TopMargin"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Left" type="VBoxContainer" parent="Layout/TopMargin/TopBar"]
+layout_mode = 2
+mouse_filter = 2
+custom_minimum_size = Vector2(244, 0)
+theme_override_constants/separation = 4
+
+[node name="HintLabel" type="Label" parent="Layout/TopMargin/TopBar/Left"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+
+[node name="InfoWindow" type="PanelContainer" parent="Layout/TopMargin/TopBar/Left"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+modulate = Color(1, 1, 1, 0.3)
+visible = false
+
+[node name="InfoText" type="RichTextLabel" parent="Layout/TopMargin/TopBar/Left/InfoWindow"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+custom_minimum_size = Vector2(228, 0)
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+
+[node name="Spacer" type="Control" parent="Layout/TopMargin/TopBar"]
+layout_mode = 2
+mouse_filter = 2
+size_flags_horizontal = 3
+
+[node name="Right" type="VBoxContainer" parent="Layout/TopMargin/TopBar"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="EnergyLabel" type="Label" parent="Layout/TopMargin/TopBar/Right"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+horizontal_alignment = 2
+
+[node name="LivesLabel" type="Label" parent="Layout/TopMargin/TopBar/Right"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+horizontal_alignment = 2
+
+[node name="Gap" type="Control" parent="Layout"]
+layout_mode = 2
+mouse_filter = 2
+size_flags_vertical = 3
+
+[node name="BottomMargin" type="MarginContainer" parent="Layout"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 0
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 6
+
+[node name="BottomBar" type="HBoxContainer" parent="Layout/BottomMargin"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="StatsLabel" type="Label" parent="Layout/BottomMargin/BottomBar"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+custom_minimum_size = Vector2(230, 0)
+size_flags_vertical = 8
+
+[node name="Spacer2" type="Control" parent="Layout/BottomMargin/BottomBar"]
+layout_mode = 2
+mouse_filter = 2
+size_flags_horizontal = 3
+
+[node name="Actions" type="HBoxContainer" parent="Layout/BottomMargin/BottomBar"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 8
+visible = false
+theme_override_constants/separation = 8
+
+[node name="CancelButton" type="Button" parent="Layout/BottomMargin/BottomBar/Actions"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(96, 30)
+text = "Cancel"
+
+[node name="OkButton" type="Button" parent="Layout/BottomMargin/BottomBar/Actions"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(96, 30)
+text = "OK"
+
+[node name="Spacer3" type="Control" parent="Layout/BottomMargin/BottomBar"]
+layout_mode = 2
+mouse_filter = 2
+size_flags_horizontal = 3
+
+[node name="Buttons" type="VBoxContainer" parent="Layout/BottomMargin/BottomBar"]
+layout_mode = 2
+mouse_filter = 2
+size_flags_vertical = 8
+theme_override_constants/separation = 6
+
+[node name="ResetButton" type="Button" parent="Layout/BottomMargin/BottomBar/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(116, 26)
+visible = false
+text = "Reset game"
+
+[node name="EndTurnButton" type="Button" parent="Layout/BottomMargin/BottomBar/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(116, 40)
+text = "End turn"
+
+[node name="Tray" type="PanelContainer" parent="Layout"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+custom_minimum_size = Vector2(0, 136)
+theme_override_styles/panel = SubResource("tray_style")
+
+[node name="Hand" type="HBoxContainer" parent="Layout/Tray"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="Tags" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="EnemyTag" parent="Tags" instance=ExtResource("tag")]
+unique_name_in_owner = true
+
+[node name="PlayerTag" parent="Tags" instance=ExtResource("tag")]
+unique_name_in_owner = true
+
+[node name="Floats" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Ghost" parent="." instance=ExtResource("flat")]
+unique_name_in_owner = true
+visible = false
+
+[node name="Toast" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -200.0
+offset_top = 34.0
+offset_right = 200.0
+offset_bottom = 58.0
+grow_horizontal = 2
+mouse_filter = 2
+horizontal_alignment = 1
+visible = false
+
+[node name="Windows" type="CenterContainer" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="PickWindow" parent="Windows" instance=ExtResource("pick")]
+unique_name_in_owner = true
+
+[node name="GameOver" parent="Windows" instance=ExtResource("over")]
+unique_name_in_owner = true
+
+[node name="FlashRect" type="ColorRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0)

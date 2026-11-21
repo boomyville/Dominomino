@@ -348,6 +348,14 @@ func fx_lines(d) -> Array:
 	return out
 
 
+## The same lines, each with the kind of effect (for its icon): [{k, text}].
+func fx_entries(d) -> Array:
+	var out := []
+	for e in d.data.effects:
+		out.append({"k": e.kind, "text": e.text(self, d.total())})
+	return out
+
+
 ## Icon + number chips shown under a hand domino. A red X ("x") replaces the icon when the
 ## play condition is not met, and for Garbage.
 func caps(i: int) -> Array:
