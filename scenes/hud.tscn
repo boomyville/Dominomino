@@ -93,6 +93,15 @@ layout_mode = 2
 mouse_filter = 2
 horizontal_alignment = 2
 
+[node name="RelicBar" type="HFlowContainer" parent="Layout/TopMargin/TopBar/Right"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+custom_minimum_size = Vector2(232, 0)
+theme_override_constants/h_separation = 2
+theme_override_constants/v_separation = 2
+alignment = 2
+
 [node name="Gap" type="Control" parent="Layout"]
 layout_mode = 2
 mouse_filter = 2

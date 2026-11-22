@@ -95,6 +95,30 @@ func status_lines() -> Array:
 	return out
 
 
+## Like status_lines(), but each status comes with its icon: [{k, text}].
+func status_entries() -> Array:
+	var out := []
+	for id in STATUS_ORDER:
+		if statuses.has(id):
+			var s = statuses[id]
+			var t: String = s.text()
+			if t != "":
+				out.append({"k": s.icon_id(), "text": t})
+	return out
+
+
+## A plain Combatant with the same HP, shield and statuses, for working out "what would happen"
+## (the damage previews) without touching the real one.
+func snapshot():
+	var c = load("res://scripts/combatant.gd").new(max_hp)
+	c.hp = hp
+	c.shield = shield
+	c.max_shield = max_shield
+	for id in statuses:
+		c.add(id, statuses[id].value)
+	return c
+
+
 ## Text shown when Fury / Impair changes (never empty).
 func fury_text() -> String:
 	var t: String = status("fury").text()

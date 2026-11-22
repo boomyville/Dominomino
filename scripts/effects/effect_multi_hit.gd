@@ -21,3 +21,8 @@ func apply(game, _domino, s: int) -> void:
 		game.hit_foe(game.pl.attack_damage(value(s)))
 		game.ui.refresh()
 		await game.ui.pause(0.26)
+
+
+func preview(_game, _domino, s: int, sim: Dictionary) -> void:
+	for i in hits:
+		sim.foe.take_damage(sim.pl.attack_damage(value(s)))

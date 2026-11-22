@@ -25,3 +25,7 @@ func text() -> String:
 	if value < 0:
 		return "Impair %d" % (-value)
 	return ""
+
+
+func icon_id() -> String:
+	return "impair" if value < 0 else "fury"

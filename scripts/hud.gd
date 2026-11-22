@@ -21,6 +21,8 @@ signal domino_rotate_requested(view)
 const DominoViewScene = preload("res://scenes/domino_view.tscn")
 const FloatingText = preload("res://scripts/floating_text.gd")
 const DominoText = preload("res://scripts/domino_text.gd")
+const Icons = preload("res://scripts/icons.gd")
+const TAG_FADE := 0.3          # tags are this opaque while a domino is selected
 const IDLE_RESET_MS := 10000
 
 @onready var hint_l: Label = %HintLabel
@@ -38,6 +40,7 @@ const IDLE_RESET_MS := 10000
 @onready var hand_box: HBoxContainer = %Hand
 @onready var enemy_tag = %EnemyTag
 @onready var player_tag = %PlayerTag
+@onready var relic_bar: HFlowContainer = %RelicBar
 @onready var floats: Control = %Floats
 @onready var toast_l: Label = %Toast
 @onready var pick_window = %PickWindow
@@ -53,6 +56,7 @@ var toast_blink_until := 0
 var flash_t0 := -100000
 var _game = null
 var _pending := false
+var _relic_ids := []
 
 
 func _ready() -> void:
@@ -98,7 +102,8 @@ func refresh(game, st: Dictionary) -> void:
 	actions.visible = st.pending
 	end_b.disabled = game.busy != 0 or game.ended or st.pending
 	_sync_tray(game, st)
-	update_tags(game)
+	_sync_relics(game)
+	update_tags(game, st)
 
 
 func _sync_tray(game, st: Dictionary) -> void:
@@ -122,17 +127,60 @@ func _sync_tray(game, st: Dictionary) -> void:
 		views[i].update_view(game.hand[i], i, i == st.sel, can, game.caps(i), hide_it)
 
 
-## The HP / shield / status / intent boxes.
-func update_tags(game) -> void:
+## The relic icons in the top right corner (hover for the text, tap to see it).
+func _sync_relics(game) -> void:
+	var ids: Array = game.relic_ids()
+	if ids == _relic_ids:
+		return
+	_relic_ids = ids
+	for c in relic_bar.get_children():
+		relic_bar.remove_child(c)
+		c.queue_free()
+	for r in game.relics:
+		var icon := TextureRect.new()
+		icon.texture = Icons.relic_texture(r)
+		icon.custom_minimum_size = Vector2(Icons.RELIC_SIZE, Icons.RELIC_SIZE)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_STOP
+		icon.tooltip_text = r.tooltip()
+		icon.gui_input.connect(_on_relic_input.bind(r))
+		relic_bar.add_child(icon)
+
+
+func _on_relic_input(event: InputEvent, relic) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		toast(relic.tooltip().replace("\n", ": "))
+
+
+## The HP / shield / status / intent boxes. While a domino is selected they fade to TAG_FADE so the
+## board shows through, the enemy's HP bar marks the HP the domino would take, and (always) your
+## HP bar marks the HP the enemy's planned attacks would take.
+func update_tags(game, st: Dictionary = {}) -> void:
 	var foe = game.foe
 	var pl = game.pl
-	var intents := []
-	for it in foe.intent:
-		intents.append({"k": it.k, "text": game.intent_text(it)})
-	var foe_status := "   ".join(["Shield %d" % foe.shield] + foe.status_lines())
-	enemy_tag.show_combatant("%s  LV %d" % [foe.title.to_upper(), foe.lv], foe.hp, foe.max_hp, foe_status, intents)
-	var pl_status := "   ".join(["Shield %d/%d" % [pl.shield, pl.max_shield]] + pl.status_lines())
-	player_tag.show_combatant("YOU", pl.hp, pl.max_hp, pl_status)
+	var idx: int = st.get("sel", -1)
+	if idx < 0:
+		idx = st.get("pending_index", -1)
+	var picking: bool = idx >= 0 and idx < game.hand.size() and not game.ended and game.busy == 0
+	var fade := TAG_FADE if picking else 1.0
+	enemy_tag.modulate.a = fade
+	player_tag.modulate.a = fade
+
+	var foe_loss := 0
+	var foe_note := ""
+	if picking:
+		var pv: Dictionary = game.preview_player_attack(idx)
+		foe_loss = pv.hp
+		if pv.attack and pv.hp == 0:
+			foe_note = "(blocked)" if pv.absorbed > 0 else "(no damage)"
+	var plan: Dictionary = game.preview_intents()
+	var pl_note := "(blocked)" if plan.attacks > 0 and plan.loss == 0 and plan.absorbed > 0 else ""
+
+	var foe_status: Array = [{"k": "shield", "text": "Shield %d" % foe.shield}] + foe.status_entries()
+	enemy_tag.show_combatant("%s  LV %d" % [foe.title.to_upper(), foe.lv], foe.hp, foe.max_hp, foe_status, plan.entries, foe_loss, foe_note)
+	var pl_status: Array = [{"k": "shield", "text": "Shield %d/%d" % [pl.shield, pl.max_shield]}] + pl.status_entries()
+	player_tag.show_combatant("YOU", pl.hp, pl.max_hp, pl_status, [], plan.loss, pl_note)
 
 
 ## Put the tags just above the characters. Anchors are the bottom-centre of each tag.

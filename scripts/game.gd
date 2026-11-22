@@ -14,11 +14,14 @@ const Domino = preload("res://scripts/domino.gd")
 const Combatant = preload("res://scripts/combatant.gd")
 const Foe = preload("res://scripts/foe.gd")
 const NullUI = preload("res://scripts/null_ui.gd")
+const Relics = preload("res://scripts/relics/relics.gd")
 
 const N := 20
 const MAXE := 10            # energy per turn
 const MAXH := 12            # most dominoes your hand can hold
 const START_LIVES := 3
+const RELIC_EVERY := 2      # a relic is offered after battle 1, 3, 5 ... (every 2nd battle)
+const RELIC_CHOICES := 3
 const START_HAND := 6
 const DRAW_PER_TURN := 4
 const DIRS := [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]
@@ -38,6 +41,9 @@ var collection := []   # every Domino you own
 var stack := []        # draw pile (top = last)
 var discard := []
 var hand := []
+# relics you own (Relic objects, see relics/relics.gd) and the ones on offer on the reward screen
+var relics := []
+var relic_offer := []
 # battle
 var pl                 # Combatant: you
 var foe                # Foe: the enemy
@@ -61,6 +67,8 @@ func _init() -> void:
 
 func new_game() -> void:
 	collection = starter_collection()
+	relics.clear()
+	relic_offer.clear()
 	battle_no = 1
 	stats = new_stats()
 	lives = START_LIVES
@@ -110,9 +118,10 @@ func start_battle() -> void:
 		for i in 3:
 			for j in 3:
 				chars[CH[who] + Vector2(i, j)] = who
-	energy = MAXE
+	energy = energy_cap()
 	played_this_turn = false
-	bat = {"played": 0, "hp_lost": false, "turn": 1}
+	bat = {"played": 0, "hp_lost": false, "turn": 1, "attacks": 0, "last_attacks": -1,
+			"empty_end": false, "last_empty": false, "extra_draw": 0}
 	stack.clear()
 	for d in collection:
 		stack.append(d.copy())
@@ -121,6 +130,9 @@ func start_battle() -> void:
 	hand.clear()
 	draw(START_HAND)
 	new_intent()
+	fire_relics("battle")
+	fire_relics("turn")
+	draw(bat.extra_draw)
 	busy = 0
 
 
@@ -208,6 +220,100 @@ func tutor_take(order: Array, c: int) -> void:
 	ui.refresh()
 	await ui.pause(0.3)
 	ui.fresh(-1)
+
+
+# ---- relics ---------------------------------------------------------------
+
+func has_relic(relic_id: String) -> bool:
+	for r in relics:
+		if r.id == relic_id:
+			return true
+	return false
+
+
+func add_relic(relic) -> void:
+	relics.append(relic)
+
+
+func relic_ids() -> Array:
+	var out := []
+	for r in relics:
+		out.append(r.id)
+	return out
+
+
+## Total of a passive number from every relic ("max_energy", "rewards").
+func relic_sum(key: String) -> int:
+	var n := 0
+	for r in relics:
+		n += r.passive_value(key)
+	return n
+
+
+## Run every relic that listens to this hook (see relics/relic.gd), in the order you got them.
+func fire_relics(hook: String, ctx: Dictionary = {}) -> void:
+	for r in relics:
+		r.trigger(self, hook, ctx)
+
+
+## Energy you start each turn with.
+func energy_cap() -> int:
+	return MAXE + relic_sum("max_energy")
+
+
+func gain_energy(n: int) -> void:
+	energy += n
+	ui.float_text("p", "+%d energy" % n)
+
+
+func gain_shield(n: int) -> void:
+	pl.shield += n
+	stats.shield += n
+	ui.float_text("p", "+%d shield" % n)
+
+
+## Draw right now because of a relic (nothing is drawn if the hand is full or the stack is empty).
+func relic_draw(n: int) -> void:
+	for i in n:
+		if draw_one():
+			announce_new_card()
+			ui.float_text("p", "+1 domino")
+
+
+## Shuffle n random discarded dominoes back into the stack. Returns how many moved.
+func restack_random(n: int = 1) -> int:
+	var moved := 0
+	for i in n:
+		if discard.is_empty():
+			break
+		var d = discard.pop_at(randi() % discard.size())
+		stack.insert(randi() % (stack.size() + 1), d)
+		moved += 1
+	if moved > 0:
+		_cache.clear()
+		ui.float_text("p", "Domino back in stack")
+	return moved
+
+
+## How many dominoes you draw at the start of a turn.
+func draws_per_turn() -> int:
+	return DRAW_PER_TURN + bat.extra_draw
+
+
+## How many pips with this number are on the board ("board") or in your hand ("hand").
+func count_pips(pip: int, where: String) -> int:
+	var n := 0
+	if where == "board":
+		for c in occ:
+			if occ[c].pip == pip:
+				n += 1
+	else:
+		for d in hand:
+			if d.a == pip:
+				n += 1
+			if d.b == pip:
+				n += 1
+	return n
 
 
 # ---- geometry -------------------------------------------------------------
@@ -344,7 +450,7 @@ func place(m: Dictionary, who: String) -> void:
 func fx_lines(d) -> Array:
 	var out := []
 	for e in d.data.effects:
-		out.append(e.text(self, d.total()))
+		out.append(e.text_for(self, d, d.total()))
 	return out
 
 
@@ -352,7 +458,7 @@ func fx_lines(d) -> Array:
 func fx_entries(d) -> Array:
 	var out := []
 	for e in d.data.effects:
-		out.append({"k": e.kind, "text": e.text(self, d.total())})
+		out.append({"k": e.icon(), "text": e.text_for(self, d, d.total())})
 	return out
 
 
@@ -364,7 +470,7 @@ func caps(i: int) -> Array:
 		return [{"k": "x", "num": ""}]
 	var chips := []
 	for e in d.data.effects:
-		chips.append({"k": e.kind, "num": e.caption(self, d.total())})
+		chips.append({"k": e.icon(), "num": e.caption_for(self, d, d.total())})
 	if not cond_ok(i):
 		return [{"k": "x", "num": chips[0].num if chips.size() > 0 else ""}]
 	return chips
@@ -383,6 +489,54 @@ func intent_text(it: Dictionary) -> String:
 		"mill":
 			return "Discard your top stack domino, add Garbage"
 	return "Shuffle 3 Garbage into your stack"
+
+
+## What the hand domino at index i would do to the enemy's HP if you played it now:
+## {attack, hp (HP the enemy would lose), absorbed (damage its shield would soak)}. Statuses that
+## the domino gives itself first (Fury before a hit ...) are counted, relics are not.
+func preview_player_attack(i: int) -> Dictionary:
+	var out := {"attack": false, "hp": 0, "absorbed": 0}
+	if i < 0 or i >= hand.size():
+		return out
+	var d = hand[i]
+	if not d.data.has_attack() or not cond_ok(i):
+		return out
+	var sim := {"pl": pl.snapshot(), "foe": foe.snapshot()}
+	for e in d.data.effects:
+		e.preview(self, d, d.total(), sim)
+	out.attack = true
+	out.hp = foe.hp - sim.foe.hp
+	out.absorbed = foe.shield - sim.foe.shield
+	return out
+
+
+## The enemy's planned actions with what each one would do to you if the turn ended now (your
+## current shield soaks first, one attack after another, and its Fury / Impair ticks down after each):
+## {entries: [{k, text}], loss (total HP you would lose), attacks (how many attacks), absorbed}.
+func preview_intents() -> Dictionary:
+	var sim_pl = pl.snapshot()
+	var sim_foe = foe.snapshot()
+	var out := {"entries": [], "loss": 0, "attacks": 0, "absorbed": 0}
+	for it in foe.intent:
+		var text := intent_text(it)
+		if it.k == "atk" or it.k == "lifeatk":
+			var dmg: int = sim_foe.attack_damage(it.v)
+			var r: Dictionary = sim_pl.take_damage(dmg)
+			sim_foe.finish_attack()
+			out.attacks += 1
+			out.loss += r.taken
+			out.absorbed += r.absorbed
+			text = "Attack %d" % dmg
+			if r.taken > 0:
+				text += ": -%d HP" % r.taken
+				if it.k == "lifeatk":
+					text += " and a life"
+			elif dmg > 0:
+				text += ": blocked"
+			else:
+				text += ": no damage"
+		out.entries.append({"k": it.k, "text": text})
+	return out
 
 
 # ---- combat ---------------------------------------------------------------
@@ -508,11 +662,15 @@ func play_domino(m: Dictionary) -> void:
 	var d = hand[m.i]
 	hand.remove_at(m.i)
 	bat.played += 1
+	if d.data.has_attack():
+		bat.attacks += 1
+	var ctx := {"a": m.a, "b": m.b, "cost": ck.cost}
 	busy = 2
 	_cache.clear()
 	ui.note_play()
 	ui.refresh()
 	await ui.pause(0.25)
+	fire_relics("play", ctx)
 	await run_fx(d)
 	busy = 0
 	ui.note_play()
@@ -548,6 +706,8 @@ func end_turn() -> void:
 	if busy != 0 or ended:
 		return
 	busy = 1
+	bat.empty_end = hand.is_empty()
+	fire_relics("turn_end")
 	stats.wasted += energy
 	energy = 0
 	_cache.clear()
@@ -578,7 +738,7 @@ func end_turn() -> void:
 	await ui.pause(0.45)
 	_new_turn_state()
 	ui.refresh()
-	for i in DRAW_PER_TURN:
+	for i in draws_per_turn():
 		if draw_one():
 			announce_new_card()
 		ui.refresh()
@@ -620,8 +780,14 @@ func _enemy_act(it: Dictionary) -> void:
 func _new_turn_state() -> void:
 	stats.turn += 1
 	bat.turn += 1
-	energy = MAXE
+	bat.last_attacks = bat.attacks
+	bat.attacks = 0
+	bat.last_empty = bat.empty_end
+	bat.empty_end = false
+	bat.extra_draw = 0
+	energy = energy_cap()
 	played_this_turn = false
+	fire_relics("turn")        # before the excess shield is cut, so relics can look at it
 	if pl.shield > pl.max_shield:
 		pl.shield = pl.max_shield
 		ui.float_text("p", "Excess shield lost")
@@ -648,7 +814,11 @@ func battle_won() -> void:
 	busy = 3
 	var opts := _begin_reward()
 	var c: int = await ui.pick("Victory!", "You healed to full HP and every status was cleared. Choose a domino to add to your stack, or skip.", opts, "Skip")
-	_start_next_battle(c, opts)
+	_take_domino(c, opts)
+	if _relic_on_offer():
+		var rc: int = await ui.pick("Choose a relic", "Relics last for the rest of the run. Take one, or skip.", relic_offer, "Skip")
+		_take_relic(rc)
+	_start_next_battle()
 	await stuck_check()
 
 
@@ -657,14 +827,30 @@ func _begin_reward() -> Array:
 	pl = Combatant.new(50)      # a fresh Combatant: full HP, no shield, no statuses, max shield back to 9
 	ui.refresh()
 	var opts := []
-	for i in 3:
+	for i in 3 + relic_sum("rewards"):
 		opts.append(new_domino())
+	relic_offer = []
+	if (battle_no - 1) % RELIC_EVERY == 0:
+		relic_offer = Relics.roll(relic_ids(), RELIC_CHOICES)
 	return opts
 
 
-func _start_next_battle(c: int, opts: Array) -> void:
+func _take_domino(c: int, opts: Array) -> void:
 	if c >= 0:
 		collection.append(opts[c].copy())
+
+
+func _relic_on_offer() -> bool:
+	return not relic_offer.is_empty()
+
+
+func _take_relic(c: int) -> void:
+	if c >= 0 and c < relic_offer.size():
+		add_relic(relic_offer[c])
+	relic_offer = []
+
+
+func _start_next_battle() -> void:
 	battle_no += 1
 	foe = Foe.new(battle_no)
 	start_battle()

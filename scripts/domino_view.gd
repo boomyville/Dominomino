@@ -113,7 +113,7 @@ func _draw_caps(top_center: Vector2) -> void:
 			j += 1
 		var x := top_center.x - rw / 2.0
 		for k in range(i, j):
-			draw_texture(Icons.texture(chips[k].k), Vector2(round(x), round(row_y)))
+			Icons.draw(self, chips[k].k, Vector2(round(x), round(row_y)))
 			if chips[k].num != "":
 				draw_string(font, Vector2(round(x) + Icons.SIZE + 1, round(row_y) + 8), chips[k].num,
 						HORIZONTAL_ALIGNMENT_LEFT, -1, CAP_FONT_SIZE, Color.BLACK)

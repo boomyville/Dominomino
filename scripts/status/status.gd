@@ -21,3 +21,8 @@ func on_attack_done() -> void:
 ## Text for the tag over the character. "" hides the status.
 func text() -> String:
 	return ""
+
+
+## The icon shown next to the status (a kind or an icon name, see icons.gd).
+func icon_id() -> String:
+	return id

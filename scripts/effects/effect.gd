@@ -55,6 +55,28 @@ func caption(_game, s: int) -> String:
 	return str(value(s)) if has_number() else ""
 
 
+## The icon shown for this effect: a kind or an icon name (see icons.gd). Defaults to the kind.
+func icon() -> String:
+	return kind
+
+
+## text() / caption() for an effect that depends on the domino itself (for example one that counts
+## its own pips). Most effects do not, so these just call text() and caption().
+func text_for(game, _domino, s: int) -> String:
+	return text(game, s)
+
+
+func caption_for(game, _domino, s: int) -> String:
+	return caption(game, s)
+
+
+## Work out what this effect would do to the damage preview, without changing the game. sim holds
+## copies of the two combatants, {pl, foe}, and the effects of one domino run in order on them.
+## Only effects that change attack damage need to override this (damage, Fury, Power, Boost ...).
+func preview(_game, _domino, _s: int, _sim: Dictionary) -> void:
+	pass
+
+
 ## Do the effect. It may wait (await game.ui.pause) or ask the player (await game.ui.pick).
 ## Keep anything that comes after an await simple: call a helper on game instead of doing
 ## arithmetic inline (Godot 4.1 to 4.4 read stale values there).

@@ -21,6 +21,8 @@ const KINDS := {
 	"selfdmg": preload("res://scripts/effects/effect_self_damage.gd"),
 	"gen": preload("res://scripts/effects/effect_generate.gd"),
 	"life": preload("res://scripts/effects/effect_life.gd"),
+	"paylife": preload("res://scripts/effects/effect_pay_life.gd"),
+	"pipdmg": preload("res://scripts/effects/effect_pip_damage.gd"),
 }
 
 

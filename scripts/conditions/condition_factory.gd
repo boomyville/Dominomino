@@ -12,6 +12,7 @@ const IDS := {
 	"played9": preload("res://scripts/conditions/cond_played_nine.gd"),
 	"lowHp": preload("res://scripts/conditions/cond_low_hp.gd"),
 	"enShield": preload("res://scripts/conditions/cond_enemy_shield.gd"),
+	"lives2": preload("res://scripts/conditions/cond_lives.gd"),
 	"never": preload("res://scripts/conditions/cond_never.gd"),
 }
 

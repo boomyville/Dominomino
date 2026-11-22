@@ -90,22 +90,24 @@ func _initialize() -> void:
 
 func _tests() -> void:
 	# ---------- catalogue ----------
-	expect(Dominoes.TY.size() == 81, "80 dominoes plus Garbage")
+	expect(Dominoes.TY.size() == 93, "92 dominoes (80 from the web build + 12 new) plus Garbage")
 	var rc := {"c": 0, "u": 0, "r": 0, "g": 0}
 	var names := {}
 	for t in Dominoes.TY:
 		rc[t.r] += 1
 		names[t.n] = true
-	expect(rc == {"c": 34, "u": 28, "r": 18, "g": 1}, "rarity counts 34 common / 28 uncommon / 18 rare %s" % rc)
-	expect(names.size() == 81, "all names are unique")
+	expect(rc == {"c": 36, "u": 35, "r": 21, "g": 1}, "rarity counts 36 common / 35 uncommon / 21 rare %s" % rc)
+	expect(names.size() == 93, "all names are unique")
 	expect(cat[Dominoes.GARBAGE].title == "Garbage" and cat[Dominoes.GARBAGE].is_garbage(), "Garbage is the last entry")
 	# every effect size matches the web build exactly (fixture dumped from index.html)
 	var fixture = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/domino_values.json"))
 	var bad := 0
 	for i in fixture.size():
 		var f = fixture[i]
-		var t = Dominoes.TY[i]
-		var d = cat[i]
+		# the fixture ends with Garbage, which sits after the new dominoes in the Godot catalogue
+		var at: int = Dominoes.GARBAGE if f.n == "Garbage" else i
+		var t = Dominoes.TY[at]
+		var d = cat[at]
 		var cid: String = d.condition.id if d.condition != null else ""
 		if f.n != d.title or f.r != d.rarity or f.c != cid or f.fx.size() != d.effects.size():
 			bad += 1
@@ -412,7 +414,7 @@ func _tests() -> void:
 	g.energy = 12
 	sp = find_spot(g, 6, 6)
 	pm = {"x": sp.x, "y": sp.y, "rot": sp.rot, "a": 6, "b": 6, "i": 0}
-	g.ui.picks = [1]
+	g.ui.picks = [1, -1]       # the domino reward, then skip the relic that is offered after battle 1
 	await g.play_domino(pm)
 	expect(g.battle_no == 2 and g.stats.battles == 1 and not g.ended, "victory starts battle 2")
 	expect(g.pl.hp == 50 and g.pl.value("fury") == 0 and g.pl.value("power") == 0 and g.pl.value("boost") == 0 and g.pl.max_shield == 9 and g.pl.shield == 0, "full heal and every status cleared")
@@ -424,7 +426,7 @@ func _tests() -> void:
 	g = Game.new(); g.foe.hp = 1; g.hand = [dom("Slash", 6, 6)]; g.energy = 12
 	sp = find_spot(g, 6, 6)
 	pm = {"x": sp.x, "y": sp.y, "rot": sp.rot, "a": 6, "b": 6, "i": 0}
-	g.ui.picks = [-1]
+	g.ui.picks = [-1, -1]
 	await g.play_domino(pm)
 	expect(g.collection.size() == 20 and g.battle_no == 2, "Skip adds nothing and still starts the next battle")
 	expect(g.ui.log.has("pick: Victory!"), "the reward screen was shown")

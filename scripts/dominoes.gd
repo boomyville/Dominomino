@@ -1,10 +1,11 @@
 extends RefCounted
-## The domino catalogue: 80 dominoes plus Garbage (the last entry).
+## The domino catalogue: 92 dominoes plus Garbage (the last entry). The first 80 come from the web build.
 ## Ported from the web build (index.html). Edit the numbers here to rebalance.
 ## build() turns this table into DominoData objects (with Effect and Condition objects inside).
 ##
 ## Each domino: {"n": name, "r": rarity (c, u, r, g), "c": play condition id ("" = always playable), "fx": [effects]}
 ## Each effect: {"k": kind, "m": value mode, "a": a, "b": b, "t": hit count}
+## (pipdmg also has "p": which pip counts and "w": "board" or "hand")
 ## The effect size comes from the pip total s (0 to 12), so bigger pips mean bigger effects:
 ##   S = s*a + b      C = ceil(s/a) + b      F = floor(s/a) + b
 ##   K = b (constant) L = max(1, round(a*s + b))      no "m" = the effect has no number
@@ -13,6 +14,7 @@ extends RefCounted
 ##   dmg hit(t hits)  shield  maxs (max shield)  draw  discR (discard random)  discP (discard of your choice)
 ##   tutor (find in stack)  power  boost  heal  rerollA (all in hand)  rerollP (one of your choice)
 ##   fury  impS (impair yourself)  impE (impair the enemy)  selfdmg (lose HP)  gen (add random dominoes to stack)  life
+##   paylife (lose a life, pair with condition "lives2")  pipdmg (damage per pip of one number on the board / in hand)
 
 const TY := [
 	{"n": "Slash", "r": "c", "c": "", "fx": [{"k": "dmg", "m": "S", "a": 1, "b": 2}]},
@@ -95,10 +97,25 @@ const TY := [
 	{"n": "Last Gasp", "r": "r", "c": "lowHp", "fx": [{"k": "dmg", "m": "L", "a": 3.5, "b": 8}, {"k": "selfdmg", "m": "L", "a": 0, "b": 4}]},
 	{"n": "Overwhelm", "r": "r", "c": "", "fx": [{"k": "impE", "m": "L", "a": 1.4, "b": 3}, {"k": "boost", "m": "L", "a": 1, "b": 4}]},
 	{"n": "Ascension", "r": "r", "c": "", "fx": [{"k": "fury", "m": "L", "a": 1.5, "b": 4}, {"k": "power", "m": "L", "a": 0.5, "b": 1}, {"k": "maxs", "m": "L", "a": 0.3, "b": 1}]},
+	# ---- elements: damage for every pip of one number (1 light, 2 earth, 3 water, 4 fire, 5 lightning, 6 darkness)
+	{"n": "Sunburst", "r": "c", "c": "", "fx": [{"k": "pipdmg", "p": 1, "w": "board", "m": "K", "a": 0, "b": 2}]},
+	{"n": "Landslide", "r": "c", "c": "", "fx": [{"k": "pipdmg", "p": 2, "w": "board", "m": "K", "a": 0, "b": 2}]},
+	{"n": "Tidal Crash", "r": "u", "c": "", "fx": [{"k": "pipdmg", "p": 3, "w": "board", "m": "K", "a": 0, "b": 3}]},
+	{"n": "Inferno", "r": "u", "c": "", "fx": [{"k": "pipdmg", "p": 4, "w": "board", "m": "K", "a": 0, "b": 3}]},
+	{"n": "Fireball", "r": "r", "c": "", "fx": [{"k": "pipdmg", "p": 4, "w": "board", "m": "K", "a": 0, "b": 4}]},
+	{"n": "Thunderclap", "r": "u", "c": "", "fx": [{"k": "pipdmg", "p": 5, "w": "hand", "m": "K", "a": 0, "b": 3}]},
+	{"n": "Eclipse", "r": "u", "c": "", "fx": [{"k": "pipdmg", "p": 6, "w": "hand", "m": "K", "a": 0, "b": 3}]},
+	# ---- paid for with a life (cannot be played when you have only 1 life)
+	{"n": "Blood Pact", "r": "u", "c": "lives2", "fx": [{"k": "paylife", "m": "K", "a": 0, "b": 1}, {"k": "dmg", "m": "L", "a": 2.4, "b": 7}]},
+	{"n": "Soul Tithe", "r": "u", "c": "lives2", "fx": [{"k": "paylife", "m": "K", "a": 0, "b": 1}, {"k": "draw", "m": "L", "a": 0.25, "b": 3}]},
+	{"n": "Hex of Ruin", "r": "u", "c": "lives2", "fx": [{"k": "paylife", "m": "K", "a": 0, "b": 1}, {"k": "impE", "m": "L", "a": 1.2, "b": 4}]},
+	{"n": "Crimson Ritual", "r": "r", "c": "lives2", "fx": [{"k": "paylife", "m": "K", "a": 0, "b": 1}, {"k": "fury", "m": "L", "a": 1.2, "b": 5}, {"k": "power", "m": "L", "a": 0.3, "b": 1}]},
+	{"n": "Sacrificial Blade", "r": "r", "c": "lives2", "fx": [{"k": "paylife", "m": "K", "a": 0, "b": 1}, {"k": "hit", "m": "L", "a": 1.2, "b": 3, "t": 3}]},
 	{"n": "Garbage", "r": "g", "c": "never", "fx": []},
 ]
 
-const GARBAGE := 80
+## Index of Garbage: always the last row of TY.
+const GARBAGE := 92
 
 const DominoData = preload("res://scripts/domino_data.gd")
 const EffectFactory = preload("res://scripts/effects/effect_factory.gd")

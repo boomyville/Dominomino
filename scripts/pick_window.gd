@@ -26,7 +26,7 @@ func ask(game, title: String, sub: String, list: Array, skip_text: String = "") 
 	for i in list.size():
 		var card = CardScene.instantiate()
 		grid.add_child(card)
-		card.show_domino(game, list[i])
+		card.show_item(game, list[i])
 		card.pressed.connect(_choose.bind(i))
 	skip_b.visible = skip_text != ""
 	skip_b.text = skip_text

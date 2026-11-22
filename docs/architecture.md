@@ -18,7 +18,10 @@ main.gd          the board     draws the isometric board, dominoes and character
                               of the input, and answers the hooks game.gd calls
 hud.gd           the HUD       scenes/hud.tscn: containers for the top bar, bottom bar, hand tray, tags,
                               floating numbers, toast and the windows. main.gd calls hud.refresh()
-icons.gd         8x8 pixel icons (as textures) for captions, info text and intents
+icons.gd         icons: your PNG from img/icons/<name>.png if it exists, else a built-in 8x8 pixel icon
+elements.gd      pip number -> element (1 light, 2 earth, 3 water, 4 fire, 5 lightning, 6 darkness)
+relics/          relics.gd = the 30 relics (a table), relic.gd = what a relic does (hook, condition, action)
+hp_preview.gd    the dark block on an HP bar that shows HP about to be lost
 ```
 
 ## The screen
@@ -64,3 +67,25 @@ godot --headless -s tests/test_rules.gd
 ```
 `tests/fixtures/domino_values.json` holds every effect size from the web build; the test checks that the Godot
 numbers match it.
+
+## Icons
+Every icon has a name (`Max Shield` -> `max_shield`). Put `res://img/icons/<name>.png` in the project and it
+replaces the built-in icon. `Icons.NAME` maps effect/intent kinds to names; full list in `img/icons/README.md`.
+In any RichTextLabel text, `:fury:` shows that icon (`DominoText.append_rich`). `Icons.SIZE` sets the draw size.
+
+## Relics
+`relics/relics.gd` is a table. Each row: when (`on`: battle, turn, turn_end, play, passive), an optional
+condition (`if`), one action (`do`) and an amount (`v`). Add a row and it works; new conditions or actions go in
+`relic.gd`. `game.gd` calls `fire_relics(hook)` at those moments. A relic is offered (pick 1 of 3) after every
+`RELIC_EVERY`th battle (battle 1, 3, 5 ...).
+
+## Previews
+`game.preview_player_attack(i)` runs a domino's effects on copies of the combatants (`Effect.preview`) to get the
+HP the enemy would lose. `game.preview_intents()` does the same for the enemy's attacks against your shield.
+Both feed the tags in `hud.update_tags`. A new effect that changes damage should override `preview`.
+
+## More tests
+```
+godot --headless -s tests/test_features.gd   # relics, new dominoes, previews, icons
+godot --headless -s tests/test_ui.gd         # tags, previews on the bars, relic bar and cards
+```

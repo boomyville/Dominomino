@@ -10,3 +10,7 @@ func apply(game, _domino, s: int) -> void:
 	var v := value(s)
 	game.pl.add("power", v)
 	game.ui.float_text("p", "Power +%d" % v)
+
+
+func preview(_game, _domino, s: int, sim: Dictionary) -> void:
+	sim.pl.add("power", value(s))
