@@ -379,10 +379,14 @@ func _tests() -> void:
 	g.add_relic(Relics.by_id("venom_fang"))
 	g.start_battle()
 	expect(g.foe.value("fury") == -3 and g.foe.status_lines()[0] == "Impair 3", "Venom Fang: 3 Impair on the enemy")
-	g = fresh()
-	g.add_relic(Relics.by_id("heartwood"))
-	g.start_battle()
-	expect(g.pl.max_hp == 55 and g.pl.hp == 55, "Heartwood: +5 max HP")
+	g = fresh("heartwood")
+	g.pl.hp = 40
+	g.pl = g.fresh_player()
+	expect(g.pl.max_hp == 55 and g.pl.hp == 40, "Heartwood: +5 max HP, and it does not heal you")
+	g.pl.hp = 55
+	g.unequip_relic(g.relics[0])
+	g.pl = g.fresh_player()
+	expect(g.pl.max_hp == 50 and g.pl.hp == 50, "unequipped, the max HP bonus is gone (HP is cut to the new max)")
 	g = fresh()
 	g.lives = 2
 	g.add_relic(Relics.by_id("phoenix_feather"))
@@ -457,32 +461,146 @@ func _tests() -> void:
 	await next_turn(g)
 	expect(g.pl.hp == 40, "Bandage Roll: nothing above half HP")
 
-	# ---------- relics: getting them ----------
+	# ---------- relics: slots and the inventory ----------
+	g = fresh()
+	var filler := ["war_drum", "iron_cloak", "tile_armor", "kindling", "frost_shard", "storm_charm", "pebble_sling", "hollow_bone"]
+	for id in filler:
+		expect(g.add_relic(Relics.by_id(id)), "%s goes into a free slot" % id)
+	expect(g.relics.size() == 8 and g.EQUIP_SLOTS == 8, "8 equip slots")
+	var extra = Relics.by_id("overcharged_core")
+	expect(not g.add_relic(extra) and g.relics.size() == 8 and g.stored_relics == [extra], "the 9th artifact waits unequipped")
+	await next_turn(g)
+	expect(g.energy == 10, "an unequipped artifact does nothing (Overcharged Core gives no energy)")
+	expect(not g.equip_relic(extra), "cannot equip with all slots full")
+	g.unequip_relic(g.relics[0])
+	expect(g.relics.size() == 7 and g.stored_relics.size() == 2, "unequip moves it to the inventory")
+	expect(g.equip_relic(extra) and g.relics.has(extra) and g.stored_relics.size() == 1, "equip when a slot is free")
+	await next_turn(g)
+	expect(g.energy == 11, "once equipped it works (11 energy)")
+	expect(g.relic_ids().size() == 9, "relic_ids lists equipped and unequipped")
+	expect(Relics.roll(g.relic_ids(), 30).size() == 21, "an offer never repeats any relic you own, equipped or not")
+
+	# ---------- rewards: domino, or 20% a choice of domino / artifact ----------
+	expect(Game.RELIC_CHANCE == 0.2, "20% chance of the artifact choice")
 	g = Game.new()
+	g.relic_chance = 0.0
 	g.foe.hp = 1
-	g.hand = [dom("Slash", 6, 6)]
-	g.energy = 12
-	g.ui.picks = [0, 1]
+	g.ui.picks = [0]
 	await play(g, dom("Slash", 6, 6), 0)
-	expect(g.relics.size() == 1 and g.ui.log.has("pick: Choose a relic") and g.relic_offer.is_empty(), "a relic is offered after battle 1 and the choice is kept")
-	expect(g.relics[0].id != "" and g.battle_no == 2, "the next battle starts")
-	var first_id: String = g.relics[0].id
+	expect(g.relics.is_empty() and g.stored_relics.is_empty() and g.battle_no == 2 and g.collection.size() == 21, "no artifact choice: just a domino")
+	expect(g.ui.log.has("intermission") and g.reward_note.begins_with("New domino"), "the screen between battles is shown with a note")
+	g = Game.new()
+	g.relic_chance = 1.0
+	g.foe.hp = 1
+	g.ui.picks = [1]
+	await play(g, dom("Slash", 6, 6), 0)
+	expect(g.relics.size() == 1 and g.collection.size() == 20 and g.battle_no == 2, "choosing the artifact gives one random artifact and no domino")
+	expect(g.reward_note.begins_with("New artifact:") and g.reward_note.ends_with("(equipped)"), "the note says it was equipped (%s)" % g.reward_note)
+	g = Game.new()
+	g.relic_chance = 1.0
+	g.foe.hp = 1
+	g.ui.picks = [0, 2]
+	await play(g, dom("Slash", 6, 6), 0)
+	expect(g.relics.is_empty() and g.collection.size() == 21, "choosing the domino then lets you pick one of the 3")
+	g = Game.new()
+	g.relic_chance = 1.0
 	g.foe.hp = 1
 	g.ui.picks = [-1]
-	g.ui.log.clear()
 	await play(g, dom("Slash", 6, 6), 0)
-	expect(g.battle_no == 3 and not g.ui.log.has("pick: Choose a relic"), "no relic after battle 2")
-	g.foe.hp = 1
-	g.ui.picks = [-1, 0]
-	await play(g, dom("Slash", 6, 6), 0)
-	expect(g.battle_no == 4 and g.relics.size() == 2 and g.relics[1].id != first_id, "a relic after battle 3 (a different one)")
-	g.new_game()
-	expect(g.relics.is_empty(), "a new game starts without relics")
+	expect(g.relics.is_empty() and g.collection.size() == 20 and g.battle_no == 2, "Skip takes neither")
 	g = Game.new()
+	g.relic_chance = 1.0
+	for id in filler:
+		g.add_relic(Relics.by_id(id))
 	g.foe.hp = 1
-	g.ui.picks = [-1, -1]
+	g.ui.picks = [1]
 	await play(g, dom("Slash", 6, 6), 0)
-	expect(g.relics.is_empty() and g.battle_no == 2, "Skip takes no relic")
+	expect(g.relics.size() == 8 and g.stored_relics.size() == 1 and g.reward_note.contains("unequipped"), "a new artifact with full slots goes to the inventory")
+	g = Game.new()
+	g.relic_chance = 1.0
+	for r in Relics.build():
+		g.add_relic(r)
+	g.foe.hp = 1
+	g._begin_reward()
+	expect(not g.artifact_offered, "no artifact choice when you already own every artifact")
+	g.new_game()
+	expect(g.relics.is_empty() and g.stored_relics.is_empty(), "a new game starts without artifacts")
+
+	# ---------- no healing between battles ----------
+	g = Game.new()
+	g.relic_chance = 0.0
+	g.pl.hp = 23
+	g.pl.shield = 5
+	g.pl.add("fury", 4)
+	g.foe.hp = 1
+	g.ui.picks = [-1]
+	await play(g, dom("Slash", 6, 6), 0)
+	expect(g.pl.hp == 23 and g.pl.shield == 0 and g.pl.value("fury") == 0, "HP stays at 23 for the next battle, shield and statuses are cleared")
+
+	# ---------- the deck lists (stack window) ----------
+	g = Game.new()
+	g.hand = [g.hand[0], g.hand[1]]
+	var hand_ids: Array = g.hand.duplicate()
+	var entries: Array = g.battle_deck_entries()
+	var n_hand := 0
+	var n_stack := 0
+	var sorted_ok := true
+	for i in entries.size():
+		if entries[i].state == "hand":
+			n_hand += 1
+		elif entries[i].state == "stack":
+			n_stack += 1
+		if i > 0 and entries[i - 1].d.data.title.to_lower() > entries[i].d.data.title.to_lower():
+			sorted_ok = false
+	expect(entries.size() >= 20 and n_hand == 2 and n_stack == g.stack.size() and sorted_ok, "battle deck entries: alphabetical, 2 in hand, the rest of the stack undrawn")
+	var drawn_one = g.stack.pop_back()
+	g.discard.append(drawn_one)
+	var states := {}
+	for e in g.battle_deck_entries():
+		if e.d == drawn_one:
+			states = e
+	expect(states.state == "drawn", "a discarded domino counts as drawn")
+	g.stack.append(drawn_one)
+	g.discard.erase(drawn_one)
+	var back := {}
+	for e in g.battle_deck_entries():
+		if e.d == drawn_one:
+			back = e
+	expect(back.state == "stack", "shuffled back into the stack it is undrawn again")
+	var coll: Array = g.collection_entries()
+	var all_stack := true
+	for e in coll:
+		if e.state != "stack":
+			all_stack = false
+	expect(coll.size() == 20 and all_stack, "between battles the whole collection is listed at full opacity")
+	var played_d = hand_ids[0]
+	g.hand.erase(played_d)
+	var after := {}
+	for e in g.battle_deck_entries():
+		if e.d == played_d:
+			after = e
+	expect(after.state == "drawn", "a played domino counts as drawn")
+
+	# ---------- settings and glossary ----------
+	var Settings = load("res://scripts/settings.gd")
+	var Glossary = load("res://scripts/glossary.gd")
+	expect(Settings.show_damage_taken and not Settings.show_status_names and not Settings.show_status_info, "defaults: damage estimate on, names off, status info off")
+	g = fresh()
+	g.foe.intent = [{"k": "atk", "v": 8}]
+	g.pl.shield = 5
+	expect(g.preview_intents(false).entries[0].text == "Attack 8" and g.preview_intents(true).entries[0].text == "Attack 8: -3 HP", "without the estimate the intent only says how hard it hits")
+	g.foe.intent = [{"k": "lifeatk", "v": 8}]
+	expect(g.preview_intents(false).entries[0].text == "Attack 8 (lose a life if unblocked)", "a life attack still explains itself")
+	g.pl.add("fury", 2)
+	g.pl.add("power", 1)
+	var ents: Array = g.pl.status_entries()
+	expect(ents[0].name == "Fury" and ents[0].num == "2" and ents[1].name == "Power" and ents[1].num == "+1", "status entries carry a name and a number")
+	g.pl.add("fury", -5)
+	expect(g.pl.status_entries()[0].name == "Impair" and g.pl.status_entries()[0].num == "3" and g.pl.status_entries()[0].k == "impair", "Impair is its own name and icon")
+	expect(Glossary.for_domino(dom("Crimson Ritual", 1, 1)) == ["life", "fury", "power"], "glossary ids for a domino, in order")
+	expect(Glossary.for_domino(dom("Slash", 1, 1)) == [] and Glossary.for_domino(dom("Hex of Ruin", 1, 1)) == ["life", "impair"], "no cards for plain damage; Impair for Hex of Ruin")
+	for id in Glossary.ENTRIES:
+		expect(Icons.exists(Glossary.ENTRIES[id].icon), "glossary icon exists: %s" % id)
 
 	# ---------- icons ----------
 	expect(Icons.name_of("dmg") == "damage" and Icons.name_of("impS") == "impair" and Icons.name_of("impE") == "impair" and Icons.name_of("fire") == "fire", "kinds map to icon names; a name stays as it is")

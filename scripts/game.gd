@@ -20,8 +20,9 @@ const N := 20
 const MAXE := 10            # energy per turn
 const MAXH := 12            # most dominoes your hand can hold
 const START_LIVES := 3
-const RELIC_EVERY := 2      # a relic is offered after battle 1, 3, 5 ... (every 2nd battle)
-const RELIC_CHOICES := 3
+const PLAYER_HP := 50
+const EQUIP_SLOTS := 8      # artifacts you can have equipped at once; the rest wait in the inventory
+const RELIC_CHANCE := 0.2   # chance that a victory offers "a domino or a random artifact"
 const START_HAND := 6
 const DRAW_PER_TURN := 4
 const DIRS := [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]
@@ -41,9 +42,13 @@ var collection := []   # every Domino you own
 var stack := []        # draw pile (top = last)
 var discard := []
 var hand := []
-# relics you own (Relic objects, see relics/relics.gd) and the ones on offer on the reward screen
-var relics := []
-var relic_offer := []
+var battle_deck := []     # every domino this battle started with (the stack window lists these)
+# artifacts (Relic objects, see relics/relics.gd)
+var relics := []          # equipped artifacts (only these do anything), at most EQUIP_SLOTS
+var stored_relics := []   # owned but not equipped
+var relic_chance := RELIC_CHANCE
+var artifact_offered := false   # this victory offers the choice of a domino or an artifact
+var reward_note := ""           # what the last reward was, shown on the screen between battles
 # battle
 var pl                 # Combatant: you
 var foe                # Foe: the enemy
@@ -68,13 +73,15 @@ func _init() -> void:
 func new_game() -> void:
 	collection = starter_collection()
 	relics.clear()
-	relic_offer.clear()
+	stored_relics.clear()
+	artifact_offered = false
+	reward_note = ""
 	battle_no = 1
 	stats = new_stats()
 	lives = START_LIVES
 	ended = false
 	reason = ""
-	pl = Combatant.new(50)
+	pl = Combatant.new(PLAYER_HP)
 	foe = Foe.new(1)
 	start_battle()
 
@@ -126,6 +133,7 @@ func start_battle() -> void:
 	for d in collection:
 		stack.append(d.copy())
 	stack.shuffle()
+	battle_deck = stack.duplicate()
 	discard.clear()
 	hand.clear()
 	draw(START_HAND)
@@ -231,15 +239,90 @@ func has_relic(relic_id: String) -> bool:
 	return false
 
 
-func add_relic(relic) -> void:
+## You got an artifact: it is equipped if a slot is free, otherwise it waits in the inventory.
+## Returns true when it was equipped.
+func add_relic(relic) -> bool:
+	if relics.size() < EQUIP_SLOTS:
+		relics.append(relic)
+		return true
+	stored_relics.append(relic)
+	return false
+
+
+func equip_relic(relic) -> bool:
+	if not stored_relics.has(relic) or relics.size() >= EQUIP_SLOTS:
+		return false
+	stored_relics.erase(relic)
 	relics.append(relic)
+	return true
 
 
+func unequip_relic(relic) -> void:
+	if relics.has(relic):
+		relics.erase(relic)
+		stored_relics.append(relic)
+
+
+## Ids of every artifact you own, equipped or not.
 func relic_ids() -> Array:
 	var out := []
-	for r in relics:
+	for r in relics + stored_relics:
 		out.append(r.id)
 	return out
+
+
+## Max HP at the start of a battle: the base plus artifacts that raise it.
+func base_max_hp() -> int:
+	return PLAYER_HP + relic_sum("max_hp")
+
+
+## A fresh Combatant for the next battle: no shield, no statuses, max shield back to normal, max HP
+## from your equipped artifacts. HP is NOT restored: you keep what you have (at most the new max).
+func fresh_player():
+	var keep: int = pl.hp
+	var c = Combatant.new(base_max_hp())
+	c.hp = mini(keep, c.max_hp)
+	return c
+
+
+## The whole deck of this battle, alphabetical: [{d, state}] where state is "stack" (not drawn yet),
+## "hand" or "drawn" (played or discarded).
+func battle_deck_entries() -> Array:
+	var all := battle_deck.duplicate()
+	for pile in [stack, hand, discard]:
+		for d in pile:
+			if d != null and not all.has(d):
+				all.append(d)
+	all.sort_custom(_domino_before)
+	var out := []
+	for d in all:
+		var state := "drawn"
+		if hand.has(d):
+			state = "hand"
+		elif stack.has(d):
+			state = "stack"
+		out.append({"d": d, "state": state})
+	return out
+
+
+## Every domino you own, alphabetical, all "stack" (for between battles).
+func collection_entries() -> Array:
+	var all := collection.duplicate()
+	all.sort_custom(_domino_before)
+	var out := []
+	for d in all:
+		out.append({"d": d, "state": "stack"})
+	return out
+
+
+static func _domino_before(x, y) -> bool:
+	var a: String = x.data.title.to_lower()
+	var b: String = y.data.title.to_lower()
+	if a != b:
+		return a < b
+	if x.total() != y.total():
+		return x.total() < y.total()
+	return x.a < y.a
 
 
 ## Total of a passive number from every relic ("max_energy", "rewards").
@@ -513,7 +596,8 @@ func preview_player_attack(i: int) -> Dictionary:
 ## The enemy's planned actions with what each one would do to you if the turn ended now (your
 ## current shield soaks first, one attack after another, and its Fury / Impair ticks down after each):
 ## {entries: [{k, text}], loss (total HP you would lose), attacks (how many attacks), absorbed}.
-func preview_intents() -> Dictionary:
+## With with_loss false the texts only say how hard each attack is (the "show damage taken" option).
+func preview_intents(with_loss: bool = true) -> Dictionary:
 	var sim_pl = pl.snapshot()
 	var sim_foe = foe.snapshot()
 	var out := {"entries": [], "loss": 0, "attacks": 0, "absorbed": 0}
@@ -527,7 +611,10 @@ func preview_intents() -> Dictionary:
 			out.loss += r.taken
 			out.absorbed += r.absorbed
 			text = "Attack %d" % dmg
-			if r.taken > 0:
+			if not with_loss:
+				if it.k == "lifeatk":
+					text += " (lose a life if unblocked)"
+			elif r.taken > 0:
 				text += ": -%d HP" % r.taken
 				if it.k == "lifeatk":
 					text += " and a life"
@@ -813,45 +900,72 @@ func stuck_check() -> void:
 func battle_won() -> void:
 	busy = 3
 	var opts := _begin_reward()
-	var c: int = await ui.pick("Victory!", "You healed to full HP and every status was cleared. Choose a domino to add to your stack, or skip.", opts, "Skip")
-	_take_domino(c, opts)
-	if _relic_on_offer():
-		var rc: int = await ui.pick("Choose a relic", "Relics last for the rest of the run. Take one, or skip.", relic_offer, "Skip")
-		_take_relic(rc)
+	await _reward_step(opts)
+	await ui.intermission(self)
 	_start_next_battle()
 	await stuck_check()
 
 
+## The reward. Usually: pick a domino (or skip). With RELIC_CHANCE it is a choice first: a domino
+## (pick 1 of 3) or a random artifact.
+func _reward_step(opts: Array) -> void:
+	if not artifact_offered:
+		_take_domino(await ui.pick("Victory!", "Choose a domino to add to your stack, or skip.", opts, "Skip"), opts)
+		return
+	var which: int = await ui.pick("Victory!", "Choose your reward.", _reward_cards(opts.size()), "Skip")
+	await _after_choice(which, opts)
+
+
+func _after_choice(which: int, opts: Array) -> void:
+	if which == 1:
+		_give_random_relic()
+	elif which == 0:
+		_take_domino(await ui.pick("Victory!", "Choose a domino to add to your stack, or skip.", opts, "Skip"), opts)
+	else:
+		reward_note = "You skipped the reward."
+
+
+## The two cards of the "domino or artifact" choice (plain dictionaries with a bbcode text).
+func _reward_cards(n: int) -> Array:
+	return [
+		{"text": "[b]A domino[/b]\nChoose 1 of %d new dominoes." % n},
+		{"text": "[b]An artifact[/b]\nGain a random artifact. It is equipped if a slot is free."},
+	]
+
+
 func _begin_reward() -> Array:
 	stats.battles += 1
-	pl = Combatant.new(50)      # a fresh Combatant: full HP, no shield, no statuses, max shield back to 9
+	pl = fresh_player()      # statuses and shield are cleared, HP is kept
 	ui.refresh()
 	var opts := []
 	for i in 3 + relic_sum("rewards"):
 		opts.append(new_domino())
-	relic_offer = []
-	if (battle_no - 1) % RELIC_EVERY == 0:
-		relic_offer = Relics.roll(relic_ids(), RELIC_CHOICES)
+	reward_note = ""
+	artifact_offered = randf() < relic_chance and not Relics.roll(relic_ids(), 1).is_empty()
 	return opts
 
 
 func _take_domino(c: int, opts: Array) -> void:
 	if c >= 0:
-		collection.append(opts[c].copy())
+		var d = opts[c].copy()
+		collection.append(d)
+		reward_note = "New domino: %s %d|%d" % [d.data.title, d.a, d.b]
+	else:
+		reward_note = "You skipped the reward."
 
 
-func _relic_on_offer() -> bool:
-	return not relic_offer.is_empty()
-
-
-func _take_relic(c: int) -> void:
-	if c >= 0 and c < relic_offer.size():
-		add_relic(relic_offer[c])
-	relic_offer = []
+func _give_random_relic() -> void:
+	var got: Array = Relics.roll(relic_ids(), 1)
+	if got.is_empty():
+		reward_note = "No artifacts left to find."
+		return
+	var equipped := add_relic(got[0])
+	reward_note = "New artifact: %s (%s)" % [got[0].title, "equipped" if equipped else "unequipped, no free slot"]
 
 
 func _start_next_battle() -> void:
 	battle_no += 1
+	pl = fresh_player()      # again: you may have changed your artifacts since the reward
 	foe = Foe.new(battle_no)
 	start_battle()
 	ui.refresh()

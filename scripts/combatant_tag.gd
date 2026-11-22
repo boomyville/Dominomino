@@ -2,6 +2,7 @@ extends PanelContainer
 ## The little box over a character: name, HP bar, shield and statuses, and (for the enemy) its intents.
 
 const DominoText = preload("res://scripts/domino_text.gd")
+const Settings = preload("res://scripts/settings.gd")
 
 @onready var title_l: Label = %Title
 @onready var hp_bar: ProgressBar = %HpBar
@@ -18,7 +19,8 @@ func _ready() -> void:
 	intent.autowrap_mode = TextServer.AUTOWRAP_OFF
 
 
-## statuses is [{k, text}] (an icon and its text, "Shield 3/9" first), intents is [{k, text}].
+## statuses is [{k, text, name, num}] (an icon and its text, "Shield 3/9" first; the name is only shown
+## when Settings.show_status_names is on), intents is [{k, text}].
 ## loss is the HP this combatant is about to lose (shown as a dark block on the bar); note is
 ## shown after the HP when nothing would be lost (for example "blocked").
 func show_combatant(title: String, hp: int, max_hp: int, statuses: Array, intents: Array = [], loss: int = 0, note: String = "") -> void:
@@ -36,10 +38,18 @@ func show_combatant(title: String, hp: int, max_hp: int, statuses: Array, intent
 		if i > 0:
 			status.append_text("   ")
 		DominoText.add_icon(status, statuses[i].k)
-		DominoText.append_rich(status, " " + statuses[i].text)
+		DominoText.append_rich(status, " " + _status_text(statuses[i]))
 	intent.clear()
 	intent.visible = intents.size() > 0
 	for it in intents:
 		DominoText.icon_line(intent, it.k, it.text)
 	# let the container shrink to fit the new text
 	reset_size()
+
+
+func _status_text(e: Dictionary) -> String:
+	if not e.has("num"):
+		return e.text
+	if Settings.show_status_names and e.name != "":
+		return "%s %s" % [e.name, e.num]
+	return e.num

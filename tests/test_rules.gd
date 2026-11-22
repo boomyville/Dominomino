@@ -414,10 +414,11 @@ func _tests() -> void:
 	g.energy = 12
 	sp = find_spot(g, 6, 6)
 	pm = {"x": sp.x, "y": sp.y, "rot": sp.rot, "a": 6, "b": 6, "i": 0}
-	g.ui.picks = [1, -1]       # the domino reward, then skip the relic that is offered after battle 1
+	g.relic_chance = 0.0       # no artifact choice this time: just the domino reward
+	g.ui.picks = [1]
 	await g.play_domino(pm)
 	expect(g.battle_no == 2 and g.stats.battles == 1 and not g.ended, "victory starts battle 2")
-	expect(g.pl.hp == 50 and g.pl.value("fury") == 0 and g.pl.value("power") == 0 and g.pl.value("boost") == 0 and g.pl.max_shield == 9 and g.pl.shield == 0, "full heal and every status cleared")
+	expect(g.pl.hp == 12 and g.pl.max_hp == 50 and g.pl.value("fury") == 0 and g.pl.value("power") == 0 and g.pl.value("boost") == 0 and g.pl.max_shield == 9 and g.pl.shield == 0, "no healing between battles (HP stays 12), every status cleared")
 	expect(g.collection.size() == 21 and g.hand.size() + g.stack.size() == 21, "the chosen domino is added: 21 owned, all in the new stack and hand")
 	expect(g.placed.size() == 0 and g.discard.size() == 0 and g.hand.size() == 6, "board and discard pile cleared, a fresh hand of 6")
 	expect(g.foe.lv == 2 and g.foe.hp == 85, "the next enemy is stronger (HP %d)" % g.foe.hp)
@@ -426,7 +427,8 @@ func _tests() -> void:
 	g = Game.new(); g.foe.hp = 1; g.hand = [dom("Slash", 6, 6)]; g.energy = 12
 	sp = find_spot(g, 6, 6)
 	pm = {"x": sp.x, "y": sp.y, "rot": sp.rot, "a": 6, "b": 6, "i": 0}
-	g.ui.picks = [-1, -1]
+	g.relic_chance = 0.0
+	g.ui.picks = [-1]
 	await g.play_domino(pm)
 	expect(g.collection.size() == 20 and g.battle_no == 2, "Skip adds nothing and still starts the next battle")
 	expect(g.ui.log.has("pick: Victory!"), "the reward screen was shown")

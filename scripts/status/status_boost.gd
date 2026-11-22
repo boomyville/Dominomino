@@ -16,3 +16,11 @@ func on_attack_done() -> void:
 
 func text() -> String:
 	return "Boost +%d" % value if value != 0 else ""
+
+
+func label() -> String:
+	return "Boost"
+
+
+func number() -> String:
+	return "+%d" % value

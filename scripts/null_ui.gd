@@ -26,6 +26,11 @@ func pick(title: String, _sub: String, _list: Array, _skip: String = "") -> int:
 	return 0
 
 
+## The screen between battles. Here it is skipped at once.
+func intermission(_game) -> void:
+	log.append("intermission")
+
+
 func float_text(who: String, text: String) -> void:
 	log.append("%s: %s" % [who, text])
 

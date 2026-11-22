@@ -95,7 +95,7 @@ func status_lines() -> Array:
 	return out
 
 
-## Like status_lines(), but each status comes with its icon: [{k, text}].
+## Like status_lines(), but each status comes with its icon: [{k, text, name, num}].
 func status_entries() -> Array:
 	var out := []
 	for id in STATUS_ORDER:
@@ -103,7 +103,7 @@ func status_entries() -> Array:
 			var s = statuses[id]
 			var t: String = s.text()
 			if t != "":
-				out.append({"k": s.icon_id(), "text": t})
+				out.append({"k": s.icon_id(), "text": t, "name": s.label(), "num": s.number()})
 	return out
 
 

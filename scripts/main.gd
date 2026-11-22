@@ -94,6 +94,11 @@ func pick(title: String, sub: String, list: Array, skip: String = "") -> int:
 	return r
 
 
+## The screen between battles (stack, inventory, Next battle). Waits for Next battle.
+func intermission(game_ref) -> void:
+	await hud.intermission(game_ref)
+
+
 func float_text(who: String, text: String) -> void:
 	var top: Vector2 = hud.tag_top(who)
 	hud.spawn_float(text, Vector2(top.x + randf_range(-25.0, 25.0), top.y - 14.0))
@@ -165,7 +170,7 @@ func _stats_rows() -> Array:
 		["Your dominoes", s.played], ["Computer dominoes", s.cpu],
 		["Damage dealt", s.dealt], ["Damage taken", s.taken], ["Damage blocked", s.absorbed],
 		["Shield gained", s.shield], ["HP healed", s.healed], ["Dominoes drawn", s.drawn],
-		["Dominoes rerolled", s.rerolls], ["Self damage", s.selfdmg], ["Dominoes owned", game.collection.size()], ["Relics", game.relics.size()],
+		["Dominoes rerolled", s.rerolls], ["Self damage", s.selfdmg], ["Dominoes owned", game.collection.size()], ["Artifacts", game.relics.size() + game.stored_relics.size()],
 		["Pips you played", s.pips], ["Pips left in hand", hand_pips], ["Pips on board", board_pips],
 		["Energy spent", s.spent], ["Energy wasted", s.wasted], ["Energy efficiency", "%d%%" % eff],
 		["Free plays", s.free], ["Doubles played", s.doubles], ["Costliest play", s.max_cost],

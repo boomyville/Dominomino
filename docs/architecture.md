@@ -76,8 +76,8 @@ In any RichTextLabel text, `:fury:` shows that icon (`DominoText.append_rich`). 
 ## Relics
 `relics/relics.gd` is a table. Each row: when (`on`: battle, turn, turn_end, play, passive), an optional
 condition (`if`), one action (`do`) and an amount (`v`). Add a row and it works; new conditions or actions go in
-`relic.gd`. `game.gd` calls `fire_relics(hook)` at those moments. A relic is offered (pick 1 of 3) after every
-`RELIC_EVERY`th battle (battle 1, 3, 5 ...).
+`relic.gd`. `game.gd` calls `fire_relics(hook)` at those moments. Only EQUIPPED relics (`game.relics`, at most `EQUIP_SLOTS` = 8) do anything; the rest sit in
+`game.stored_relics` until you equip them in the inventory.
 
 ## Previews
 `game.preview_player_attack(i)` runs a domino's effects on copies of the combatants (`Effect.preview`) to get the
@@ -89,3 +89,17 @@ Both feed the tags in `hud.update_tags`. A new effect that changes damage should
 godot --headless -s tests/test_features.gd   # relics, new dominoes, previews, icons
 godot --headless -s tests/test_ui.gd         # tags, previews on the bars, relic bar and cards
 ```
+
+## Rewards, healing and the screen between battles
+- You do not heal between battles: HP carries over (`game.fresh_player()` clears shield and statuses only).
+- Each victory is a domino pick (1 of 3). With `relic_chance` (20%) you first choose: a domino, or a random artifact
+  (equipped if a slot is free, otherwise unequipped).
+- After the reward `ui.intermission(game)` shows a blank screen with your stats and the buttons: Show domino stack,
+  Inventory, NEXT BATTLE (`intermission_window.gd`). Equip artifacts there; the next battle uses what is equipped.
+
+## Windows and settings
+`hud.tscn` has a ModalLayer holding the settings, stack, inventory and intermission windows; it blocks the game under it
+while any is open. `settings.gd` holds the options (saved to user://settings.cfg): show estimated damage taken, show
+status names, show status info cards. `glossary.gd` has the text of those cards; `domino_info.gd` is the info panel
+(used by the HUD and the stack window). The stack window lists `game.battle_deck_entries()` (or `collection_entries()`
+between battles): not drawn = full, in hand = bordered and faded, drawn = faded more.

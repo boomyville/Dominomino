@@ -29,3 +29,11 @@ func text() -> String:
 
 func icon_id() -> String:
 	return "impair" if value < 0 else "fury"
+
+
+func label() -> String:
+	return "Impair" if value < 0 else "Fury"
+
+
+func number() -> String:
+	return str(absi(value))

@@ -13,9 +13,14 @@ func show_domino(game, d) -> void:
 	DominoText.fill(body, game, d)
 
 
-## A choice can be a domino or a relic (the reward screen offers both kinds).
+## A choice can be a domino, a relic, or a plain {text} card (the reward screen offers all three).
 func show_item(game, item) -> void:
-	if item.has_method("is_relic"):
+	if item is Dictionary:
+		picture.visible = false
+		DominoText.setup(body)
+		body.clear()
+		body.append_text(item.text)
+	elif item.has_method("is_relic"):
 		picture.visible = false
 		DominoText.setup(body)
 		DominoText.fill_relic(body, item)

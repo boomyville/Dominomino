@@ -23,7 +23,7 @@ extends RefCounted
 ## Actions ("do" in the row, "v" is the amount):
 ##   energy  shield  max_shield  draw  fury  power  boost  impair (on the enemy)  heal  damage (to the enemy)
 ##   restack (shuffle v random discarded dominoes back into the stack)  max_hp  life
-## Passive keys: max_energy (energy you get each turn) and rewards (extra dominoes offered after a battle).
+## Passive keys: max_energy (energy you get each turn), max_hp (more max HP) and rewards (extra dominoes offered after a battle).
 ## "once": true means it can fire at most once per turn.
 
 var id := ""

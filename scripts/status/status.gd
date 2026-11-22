@@ -26,3 +26,12 @@ func text() -> String:
 ## The icon shown next to the status (a kind or an icon name, see icons.gd).
 func icon_id() -> String:
 	return id
+
+
+## The name and the number shown on the tag, so the name can be switched off ("" = hidden).
+func label() -> String:
+	return ""
+
+
+func number() -> String:
+	return ""

@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Theme" path="res://themes/main_theme.tres" id="theme"]
 [ext_resource type="Script" path="res://scripts/hud.gd" id="hud"]
@@ -6,6 +6,11 @@
 [ext_resource type="PackedScene" path="res://scenes/flat_domino.tscn" id="flat"]
 [ext_resource type="PackedScene" path="res://scenes/pick_window.tscn" id="pick"]
 [ext_resource type="PackedScene" path="res://scenes/game_over_window.tscn" id="over"]
+[ext_resource type="PackedScene" path="res://scenes/domino_info.tscn" id="info"]
+[ext_resource type="PackedScene" path="res://scenes/settings_window.tscn" id="settings"]
+[ext_resource type="PackedScene" path="res://scenes/stack_window.tscn" id="stack"]
+[ext_resource type="PackedScene" path="res://scenes/inventory_window.tscn" id="inventory"]
+[ext_resource type="PackedScene" path="res://scenes/intermission_window.tscn" id="inter"]
 
 [sub_resource type="StyleBoxFlat" id="tray_style"]
 bg_color = Color(1, 1, 1, 1)
@@ -56,21 +61,11 @@ unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 
-[node name="InfoWindow" type="PanelContainer" parent="Layout/TopMargin/TopBar/Left"]
+[node name="InfoWindow" parent="Layout/TopMargin/TopBar/Left" instance=ExtResource("info")]
 unique_name_in_owner = true
 layout_mode = 2
-mouse_filter = 2
 modulate = Color(1, 1, 1, 0.3)
 visible = false
-
-[node name="InfoText" type="RichTextLabel" parent="Layout/TopMargin/TopBar/Left/InfoWindow"]
-unique_name_in_owner = true
-layout_mode = 2
-mouse_filter = 2
-custom_minimum_size = Vector2(228, 0)
-bbcode_enabled = true
-fit_content = true
-scroll_active = false
 
 [node name="Spacer" type="Control" parent="Layout/TopMargin/TopBar"]
 layout_mode = 2
@@ -161,6 +156,23 @@ mouse_filter = 2
 size_flags_vertical = 8
 theme_override_constants/separation = 6
 
+[node name="MenuRow" type="HBoxContainer" parent="Layout/BottomMargin/BottomBar/Buttons"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="SettingsButton" type="Button" parent="Layout/BottomMargin/BottomBar/Buttons/MenuRow"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(68, 26)
+text = "Settings"
+
+[node name="StackButton" type="Button" parent="Layout/BottomMargin/BottomBar/Buttons/MenuRow"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(56, 26)
+text = "Stack"
+
 [node name="ResetButton" type="Button" parent="Layout/BottomMargin/BottomBar/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -245,6 +257,48 @@ mouse_filter = 2
 unique_name_in_owner = true
 
 [node name="GameOver" parent="Windows" instance=ExtResource("over")]
+unique_name_in_owner = true
+
+[node name="ModalLayer" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+visible = false
+
+[node name="Dim" type="ColorRect" parent="ModalLayer"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 1, 1, 0.8)
+
+[node name="IntermissionWindow" parent="ModalLayer" instance=ExtResource("inter")]
+unique_name_in_owner = true
+
+[node name="Centered" type="CenterContainer" parent="ModalLayer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="SettingsWindow" parent="ModalLayer/Centered" instance=ExtResource("settings")]
+unique_name_in_owner = true
+
+[node name="StackWindow" parent="ModalLayer/Centered" instance=ExtResource("stack")]
+unique_name_in_owner = true
+
+[node name="InventoryWindow" parent="ModalLayer/Centered" instance=ExtResource("inventory")]
 unique_name_in_owner = true
 
 [node name="FlashRect" type="ColorRect" parent="."]

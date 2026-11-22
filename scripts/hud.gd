@@ -6,6 +6,7 @@ extends Control
 ##   tags         HP / shield / status / intent over each character
 ##   floats       numbers that float up and fade
 ##   windows      pick window and game over window
+##   modal layer  settings, domino stack, inventory and the screen between battles (blocks the game below)
 ## main.gd tells it what to show with refresh(); it tells main.gd what the player did with signals.
 
 signal end_turn_pressed
@@ -22,6 +23,7 @@ const DominoViewScene = preload("res://scenes/domino_view.tscn")
 const FloatingText = preload("res://scripts/floating_text.gd")
 const DominoText = preload("res://scripts/domino_text.gd")
 const Icons = preload("res://scripts/icons.gd")
+const Settings = preload("res://scripts/settings.gd")
 const TAG_FADE := 0.3          # tags are this opaque while a domino is selected
 const IDLE_RESET_MS := 10000
 
@@ -29,8 +31,15 @@ const IDLE_RESET_MS := 10000
 @onready var energy_l: Label = %EnergyLabel
 @onready var lives_l: Label = %LivesLabel
 @onready var stats_l: Label = %StatsLabel
-@onready var info_window: PanelContainer = %InfoWindow
-@onready var info_text: RichTextLabel = %InfoText
+@onready var info_window = %InfoWindow
+@onready var settings_b: Button = %SettingsButton
+@onready var stack_b: Button = %StackButton
+@onready var modal_layer: Control = %ModalLayer
+@onready var dim: ColorRect = %Dim
+@onready var settings_window = %SettingsWindow
+@onready var stack_window = %StackWindow
+@onready var inventory_window = %InventoryWindow
+@onready var intermission_window = %IntermissionWindow
 @onready var actions: HBoxContainer = %Actions
 @onready var cancel_b: Button = %CancelButton
 @onready var ok_b: Button = %OkButton
@@ -57,10 +66,18 @@ var flash_t0 := -100000
 var _game = null
 var _pending := false
 var _relic_ids := []
+var _last_st := {}
 
 
 func _ready() -> void:
-	DominoText.setup(info_text)
+	Settings.load_settings()
+	settings_b.pressed.connect(open_settings)
+	stack_b.pressed.connect(func(): open_stack(_game, true))
+	settings_window.changed.connect(_on_settings_changed)
+	for w in [settings_window, stack_window, inventory_window]:
+		w.closed.connect(_sync_modal)
+	intermission_window.stack_pressed.connect(func(): open_stack(_game, false))
+	intermission_window.inventory_pressed.connect(func(): open_inventory(_game))
 	cancel_b.pressed.connect(func(): cancel_pressed.emit())
 	ok_b.pressed.connect(func(): ok_pressed.emit())
 	end_b.pressed.connect(func(): end_turn_pressed.emit())
@@ -74,6 +91,7 @@ func _ready() -> void:
 ## Show the current game. st = {sel, pending, drag_index, pending_index}.
 func refresh(game, st: Dictionary) -> void:
 	_game = game
+	_last_st = st
 	_pending = st.pending
 	energy_l.text = "Energy %d" % game.energy
 	lives_l.text = "Lives x%d" % game.lives
@@ -98,7 +116,7 @@ func refresh(game, st: Dictionary) -> void:
 	var show_info: bool = st.sel >= 0 and st.sel < game.hand.size() and not game.ended and game.busy == 0
 	info_window.visible = show_info
 	if show_info:
-		DominoText.fill(info_text, game, game.hand[st.sel], st.sel)
+		info_window.show_domino(game, game.hand[st.sel], st.sel)
 	actions.visible = st.pending
 	end_b.disabled = game.busy != 0 or game.ended or st.pending
 	_sync_tray(game, st)
@@ -174,13 +192,16 @@ func update_tags(game, st: Dictionary = {}) -> void:
 		foe_loss = pv.hp
 		if pv.attack and pv.hp == 0:
 			foe_note = "(blocked)" if pv.absorbed > 0 else "(no damage)"
-	var plan: Dictionary = game.preview_intents()
-	var pl_note := "(blocked)" if plan.attacks > 0 and plan.loss == 0 and plan.absorbed > 0 else ""
+	var show_taken: bool = Settings.show_damage_taken
+	var plan: Dictionary = game.preview_intents(show_taken)
+	var pl_loss: int = plan.loss if show_taken else 0
+	var pl_note := "(blocked)" if show_taken and plan.attacks > 0 and plan.loss == 0 and plan.absorbed > 0 else ""
 
-	var foe_status: Array = [{"k": "shield", "text": "Shield %d" % foe.shield}] + foe.status_entries()
+	var foe_status: Array = [{"k": "shield", "text": "Shield %d" % foe.shield, "name": "Shield", "num": str(foe.shield)}] + foe.status_entries()
 	enemy_tag.show_combatant("%s  LV %d" % [foe.title.to_upper(), foe.lv], foe.hp, foe.max_hp, foe_status, plan.entries, foe_loss, foe_note)
-	var pl_status: Array = [{"k": "shield", "text": "Shield %d/%d" % [pl.shield, pl.max_shield]}] + pl.status_entries()
-	player_tag.show_combatant("YOU", pl.hp, pl.max_hp, pl_status, [], plan.loss, pl_note)
+	var pl_status: Array = [{"k": "shield", "text": "Shield %d/%d" % [pl.shield, pl.max_shield], "name": "Shield",
+			"num": "%d/%d" % [pl.shield, pl.max_shield]}] + pl.status_entries()
+	player_tag.show_combatant("YOU", pl.hp, pl.max_hp, pl_status, [], pl_loss, pl_note)
 
 
 ## Put the tags just above the characters. Anchors are the bottom-centre of each tag.
@@ -225,6 +246,50 @@ func note_play() -> void:
 func pick(game, title: String, sub: String, list: Array, skip: String = "") -> int:
 	var r: int = await pick_window.ask(game, title, sub, list, skip)
 	return r
+
+
+## ---- modal windows ------------------------------------------------------
+
+func open_settings() -> void:
+	settings_window.open()
+	_sync_modal()
+
+
+## in_battle: false shows the whole collection at full opacity (between battles).
+func open_stack(game, in_battle: bool) -> void:
+	if game == null:
+		return
+	stack_window.open(game, in_battle)
+	_sync_modal()
+
+
+func open_inventory(game) -> void:
+	if game == null:
+		return
+	inventory_window.open(game)
+	_sync_modal()
+
+
+## The screen between battles. Waits until Next battle is pressed.
+func intermission(game) -> void:
+	_game = game
+	intermission_window.ask(game)
+	_sync_modal()
+	await intermission_window.next_pressed
+	_sync_modal()
+
+
+## The modal layer is only there (and only blocks the game under it) while a window is open.
+func _sync_modal() -> void:
+	var any: bool = settings_window.visible or stack_window.visible or inventory_window.visible or intermission_window.visible
+	modal_layer.visible = any
+	dim.visible = not intermission_window.visible
+
+
+func _on_settings_changed() -> void:
+	if _game != null:
+		refresh(_game, _last_st)
+	stack_window.refresh_info()
 
 
 func show_game_over(rows: Array) -> void:

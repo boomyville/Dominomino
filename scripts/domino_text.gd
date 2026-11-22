@@ -3,6 +3,7 @@ extends RefCounted
 ## the play condition and the statuses that are changing its damage.
 
 const Icons = preload("res://scripts/icons.gd")
+const Glossary = preload("res://scripts/glossary.gd")
 
 
 ## Set a RichTextLabel up the way every domino text uses it.
@@ -73,4 +74,25 @@ static func fill_relic(rt: RichTextLabel, relic) -> void:
 	rt.append_text("  " + relic.title)
 	rt.pop()
 	rt.append_text("\n%s relic\n" % relic.rarity_name())
+	append_rich(rt, relic.text)
+
+
+## A glossary card: the status icon and name, then what it does.
+static func fill_status(rt: RichTextLabel, id: String) -> void:
+	var e: Dictionary = Glossary.ENTRIES[id]
+	rt.clear()
+	add_icon(rt, e.icon)
+	rt.push_bold()
+	rt.append_text(" " + e.name)
+	rt.pop()
+	rt.append_text("\n" + e.text)
+
+
+## A relic as a list row: bold name, rarity, then what it does (the picture is drawn separately).
+static func fill_relic_line(rt: RichTextLabel, relic) -> void:
+	rt.clear()
+	rt.push_bold()
+	rt.append_text(relic.title)
+	rt.pop()
+	rt.append_text("  (%s)\n" % relic.rarity_name())
 	append_rich(rt, relic.text)
