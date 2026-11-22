@@ -32,20 +32,25 @@ func close() -> void:
 
 func _rebuild() -> void:
 	var g = _game
-	slots_l.text = "Equipped slots: %d / %d" % [g.relics.size(), g.EQUIP_SLOTS]
+	slots_l.text = "Artifact slots: %d / %d" % [g.relics.size(), g.EQUIP_SLOTS]
 	for c in rows.get_children():
 		rows.remove_child(c)
 		c.queue_free()
+	_header("WEAPON (one at a time, it cannot be unequipped, only replaced)")
+	if g.weapon != null:
+		_row(g.weapon, "weapon_now")
+	for w in g.stored_weapons:
+		_row(w, "weapon")
 	_header("EQUIPPED (%d)" % g.relics.size())
 	if g.relics.is_empty():
 		_note("Nothing equipped.")
 	for r in g.relics:
-		_row(r, true)
+		_row(r, "equipped")
 	_header("UNEQUIPPED (%d)  no effect until equipped" % g.stored_relics.size())
 	if g.stored_relics.is_empty():
 		_note("Nothing here.")
 	for r in g.stored_relics:
-		_row(r, false)
+		_row(r, "stored")
 
 
 func _header(t: String) -> void:
@@ -62,7 +67,7 @@ func _note(t: String) -> void:
 	rows.add_child(l)
 
 
-func _row(r, equipped: bool) -> void:
+func _row(r, mode: String) -> void:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 8)
 	var icon := TextureRect.new()
@@ -80,7 +85,13 @@ func _row(r, equipped: bool) -> void:
 	var b := Button.new()
 	b.custom_minimum_size = Vector2(96, 30)
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	if equipped:
+	if mode == "weapon_now":
+		b.text = "Equipped"
+		b.disabled = true
+	elif mode == "weapon":
+		b.text = "Equip"
+		b.pressed.connect(func(): _game.equip_weapon(r); _rebuild())
+	elif mode == "equipped":
 		b.text = "Unequip"
 		b.pressed.connect(func(): _game.unequip_relic(r); _rebuild())
 	else:

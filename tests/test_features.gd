@@ -86,8 +86,47 @@ func next_turn(g: Game) -> void:
 	await g.end_turn()
 
 
+func _game_with_gear() -> Game:
+	Game.starter_gear = true
+	var g := Game.new()
+	Game.starter_gear = false
+	return g
+
+
+func _hand_titles(g: Game) -> Array:
+	var out := []
+	for d in g.hand:
+		out.append("%s %d|%d" % [d.data.title, d.a, d.b])
+	return out
+
+
+func _stack_titles(g: Game) -> Array:
+	var out := []
+	for d in g.stack:
+		out.append("%s %d|%d" % [d.data.title, d.a, d.b])
+	return out
+
+
+func DominoText_has_ephemeral(g: Game, d) -> bool:
+	var rt := RichTextLabel.new()
+	rt.bbcode_enabled = true
+	g.hand = [d]
+	DominoText.fill(rt, g, d, 0)
+	var ok := rt.get_parsed_text().contains("Ephemeral")
+	rt.free()
+	return ok
+
+
+## Damage a domino of this kind and these pips deals on a fresh game with nothing else going on.
+func _dmg_of(_g: Game, title: String, a: int, b: int) -> int:
+	var t := fresh()
+	await t.run_fx(dom(title, a, b))
+	return 200 - t.foe.hp
+
+
 func _initialize() -> void:
 	randomize()
+	Game.starter_gear = false      # plain start; the starter gear is tested near the end
 	await _tests()
 	print("CHECKS: ", checks, "  FAILURES: ", fails)
 	quit(fails)
@@ -101,8 +140,8 @@ func _tests() -> void:
 	for r in all:
 		rc[r.rarity] += 1
 		ids[r.id] = true
-	expect(all.size() == 30 and ids.size() == 30, "30 relics with unique ids")
-	expect(rc == {"c": 13, "u": 14, "r": 3}, "relic rarities 13 common / 14 uncommon / 3 rare %s" % rc)
+	expect(all.size() == 36 and ids.size() == 36, "36 artifacts (30 + 6 new) with unique ids")
+	expect(rc == {"c": 13, "u": 16, "r": 7}, "artifact rarities 13 common / 16 uncommon / 7 rare %s" % rc)
 	expect(Relics.by_id("gamblers_purse") != null and Relics.by_id("gamblers_purse").title == "Gambler's Purse", "ids drop apostrophes and spaces")
 	var owned := ids.keys().slice(2)
 	var left := Relics.roll(owned, 3)
@@ -224,6 +263,7 @@ func _tests() -> void:
 			a.hand.remove_at(0)
 			a.occ[Vector2(8, 8)] = {"id": 7, "owner": "p", "pip": d.a}
 			a.occ[Vector2(9, 8)] = {"id": 7, "owner": "p", "pip": d.b}
+			a.placed.append({"owner": "p", "a": d.a, "b": d.b})
 			var before: int = a.foe.hp
 			await a.run_fx(d)
 			tested += 1
@@ -478,7 +518,7 @@ func _tests() -> void:
 	await next_turn(g)
 	expect(g.energy == 11, "once equipped it works (11 energy)")
 	expect(g.relic_ids().size() == 9, "relic_ids lists equipped and unequipped")
-	expect(Relics.roll(g.relic_ids(), 30).size() == 21, "an offer never repeats any relic you own, equipped or not")
+	expect(Relics.roll(g.relic_ids(), 40).size() == 26, "an offer never repeats any relic you own, equipped or not, nor the starter Time Pendant")
 
 	# ---------- rewards: domino, or 20% a choice of domino / artifact ----------
 	expect(Game.RELIC_CHANCE == 0.2, "20% chance of the artifact choice")
@@ -601,6 +641,362 @@ func _tests() -> void:
 	expect(Glossary.for_domino(dom("Slash", 1, 1)) == [] and Glossary.for_domino(dom("Hex of Ruin", 1, 1)) == ["life", "impair"], "no cards for plain damage; Impair for Hex of Ruin")
 	for id in Glossary.ENTRIES:
 		expect(Icons.exists(Glossary.ENTRIES[id].icon), "glossary icon exists: %s" % id)
+
+	# ---------- seed: same stack, same plans ----------
+	g = Game.new()
+	expect(g.seed_value >= 100000000 and g.seed_value < 1000000000, "a new game gets a 9 digit seed (%d)" % g.seed_value)
+	var h1 := _hand_titles(g)
+	var intents1: Array = g.foe.intent.duplicate(true)
+	var stack1 := _stack_titles(g)
+	g.start_battle()
+	expect(_hand_titles(g) == h1 and _stack_titles(g) == stack1 and g.foe.intent == intents1, "starting the battle again gives the same hand, stack order and enemy plans")
+	var g2 := Game.new()
+	g2.new_game(g.seed_value)
+	expect(_stack_titles(g2) == stack1 and g2.foe.intent == intents1, "the same seed gives the same battle in a new game")
+	var g3 := Game.new()
+	g3.new_game(g.seed_value + 1)
+	expect(_stack_titles(g3) != stack1 or g3.foe.intent != intents1, "another seed gives another battle")
+	# the plan for later turns depends on the seed, the battle and the turn only
+	g.bat.turn = 5
+	g.new_intent()
+	var turn5: Array = g.foe.intent.duplicate(true)
+	g.rng.randi()
+	g.rng.randi()
+	g.new_intent()
+	expect(g.foe.intent == turn5, "the enemy plan of a turn does not depend on what random numbers were used before")
+	g.start_battle()
+	g.hand[0] = g.hand[0]
+	g.hand.pop_front()
+	g.energy = 3
+	g.pl.shield = 4
+	g.restart_battle()
+	expect(_hand_titles(g) == h1 and g.energy == 10 and g.pl.shield == 0 and g.foe.intent == intents1, "Restart battle: same hand again, fresh energy and shield")
+	g = Game.new()
+	var hp_start: int = g.pl.hp
+	g.pl.hp = 11
+	g.lives = 1
+	g.ended = true
+	g.restart_battle()
+	expect(not g.ended and g.pl.hp == hp_start and g.lives == 3, "Restart battle after a defeat gives back your HP and lives from the start of the battle")
+	g = Game.new()
+	g.foe.hp = 5
+	g.hand = [dom("Slash", 1, 1)]
+	g.busy = 2
+	expect(not g.restart_battle() and g.busy == 2, "cannot restart in the middle of an animation")
+	g.busy = 0
+
+	# ---------- ephemeral dominoes ----------
+	g = fresh()
+	g.hand = [dom("Lunge", 1, 1), dom("Slash", 1, 1), dom("Flash Guard", 1, 1)]
+	g.foe.intent = []
+	g.played_this_turn = true
+	await g.end_turn()
+	var still := []
+	for d in g.hand:
+		still.append(d.data.title)
+	expect(not still.has("Lunge") and not still.has("Flash Guard") and still.has("Slash"), "ephemeral dominoes left in hand go to the discard pile at the end of the turn")
+	expect(g.discard.size() == 2 and g.discard[0].data.ephemeral, "they are in the discard pile")
+	expect(cat[ti("Lunge")].ephemeral and cat[ti("Quick Strike")].ephemeral and not cat[ti("Slash")].ephemeral, "the ephemeral flag comes from the catalogue")
+	expect(DominoText_has_ephemeral(g, dom("Lunge", 1, 1)), "the info text says Ephemeral")
+	# stronger than the normal counterpart for the same pips
+	var lunge_dmg: int = await _dmg_of(g, "Lunge", 3, 3)
+	var slash_dmg: int = await _dmg_of(g, "Slash", 3, 3)
+	expect(lunge_dmg > slash_dmg, "Lunge hits harder than Slash for the same pips (%d vs %d)" % [lunge_dmg, slash_dmg])
+	g = fresh()
+	g.hand = [dom("Quick Strike", 1, 1), dom("Slash", 1, 1)]
+	expect(g.cond_ok(0), "Quick Strike can be the first domino of the turn")
+	g.played_this_turn = true
+	expect(not g.cond_ok(0), "Quick Strike cannot be played after another domino")
+	var Dom := Dominoes
+	var counts := {"c": 0, "u": 0, "r": 0}
+	for i in 600:
+		counts[cat[Dom.rand_type(g.rng)].rarity] += 1
+	expect(counts.c > 0 and counts.u > 0 and counts.r > 0, "random dominoes never include weapon dominoes (only c, u and r come out)")
+
+	# ---------- rip and shred ----------
+	g = fresh()
+	g.placed = [{"owner": "p", "a": 2, "b": 3}, {"owner": "c", "a": 6, "b": 6}, {"owner": "p", "a": 1, "b": 1}]
+	g.hand = [dom("Rip and Shred", 2, 1)]
+	var shred = cat[ti("Rip and Shred")].effects[0]
+	expect(shred.count(g, g.hand[0]) == 7 + 3, "Rip and Shred counts the pips of every domino YOU played, plus itself")
+	expect(g.fx_lines(g.hand[0])[0].contains("10 now"), "its text shows the current total")
+	g.pl.add("fury", 2)
+	expect(g.preview_player_attack(0).hp == 12, "the preview includes Fury")
+	g.pl.statuses.clear()
+	g.placed.append({"owner": "p", "a": 2, "b": 1})        # now it is on the board
+	await g.run_fx(g.hand[0])
+	expect(200 - g.foe.hp == 10, "it deals that much damage")
+
+	# ---------- weapons ----------
+	Game.starter_gear = true
+	g = Game.new()
+	Game.starter_gear = false
+	expect(g.weapon != null and g.weapon.title == "Short Sword" and g.has_relic("time_pendant"), "a new game starts with the Short Sword and the Time Pendant")
+	expect(g.relics.size() == 1 and g.relics[0].id == "time_pendant" and g.has_rewind(), "the Time Pendant takes an artifact slot")
+	var deck := g.battle_deck_entries()
+	var by := {}
+	for e in deck:
+		by[e.d.data.title] = by.get(e.d.data.title, 0) + 1
+	expect(deck.size() == 25 and by["Quick Strike"] == 2 and by["Slash"] >= 3, "the Short Sword adds 3 Slash and 2 Quick Strike to the 20 dominoes (25 in all)")
+	expect(g.collection.size() == 20, "weapon dominoes are not added to your collection")
+	var qs: Array = []
+	for e in deck:
+		if e.d.data.title == "Quick Strike":
+			qs.append(e.d)
+	expect(qs[0].total() == 2 and qs[0].data.ephemeral, "Quick Strike has small pips (2 energy) and is ephemeral")
+	g = fresh()
+	g.add_relic(Relics.by_id("time_pendant"))
+	expect(Relics.by_id("short_sword").weapon and Relics.build_weapons().size() == 5, "5 weapons")
+	var cases := [["long_sword", "Heavy Blade", 2, "bottom"], ["shining_blade", "Cutting Edge", 1, "top"], ["sawtooth_blade", "Rip and Shred", 2, "any"]]
+	for c in cases:
+		g = Game.new()
+		g.weapon = Relics.by_id(c[0])
+		g.start_battle()
+		var idx: Array = []
+		for i in g.stack.size():
+			if g.stack[i].data.title == c[1]:
+				idx.append(i)
+		for d in g.hand:
+			if d.data.title == c[1]:
+				idx.append(-1)
+		expect(idx.size() == c[2], "%s adds %d %s" % [c[0], c[2], c[1]])
+		if c[3] == "bottom":
+			expect(idx == [0, 1], "Heavy Blade sits at the very bottom of the stack (drawn last)")
+		if c[3] == "top":
+			var in_hand := false
+			for d in g.hand:
+				if d.data.title == "Cutting Edge":
+					in_hand = true
+			expect(in_hand, "Cutting Edge is on top of the stack, so it is in your first hand")
+	g = Game.new()
+	g.weapon = Relics.by_id("shining_blade")
+	g.start_battle()
+	var ce = null
+	for d in g.hand:
+		if d.data.title == "Cutting Edge":
+			ce = d
+	expect(ce != null and ce.total() == 1, "Cutting Edge costs 1 energy")
+	g.foe.hp = 200
+	g.foe.max_hp = 200
+	g.foe.shield = 0
+	await g.run_fx(ce)
+	expect(200 - g.foe.hp == 25, "Cutting Edge: 5 hits of 5 = 25 damage")
+	# rapier: En Garde at the start of EVERY turn, and it is ephemeral
+	g = Game.new()
+	g.weapon = Relics.by_id("rapier")
+	g.start_battle()
+	var eg := 0
+	for d in g.hand:
+		if d.data.title == "En Garde":
+			eg += 1
+	expect(eg == 1, "Rapier: an En Garde in your first hand")
+	g.foe.intent = []
+	g.played_this_turn = true
+	await g.end_turn()
+	eg = 0
+	for d in g.hand:
+		if d.data.title == "En Garde":
+			eg += 1
+	expect(eg == 1 and g.discard.size() >= 1, "Rapier: the unplayed one was discarded and a new En Garde arrives each turn (still just 1)")
+	expect(g.battle_deck.size() == 20 + 2, "the added En Garde cards are part of this battle's deck list")
+	# only one weapon, never unequipped, replaced
+	g = fresh()
+	g.weapon = Relics.by_id("short_sword")
+	var lw = Relics.by_id("long_sword")
+	g.stored_weapons.append(lw)
+	expect(g.equip_weapon(lw) and g.weapon == lw and g.stored_weapons.size() == 1 and g.stored_weapons[0].title == "Short Sword", "equipping a weapon swaps it with the old one")
+	expect(not g.equip_weapon(Relics.by_id("rapier")), "you can only equip a weapon you own")
+	expect(g.relic_ids().has("long_sword") and g.relic_ids().has("short_sword"), "owned weapons count as owned")
+
+	# ---------- the Time Pendant ----------
+	g = _game_with_gear()
+	g.relic_chance = 0.0
+	expect(g.can_rewind_turn() and g.has_rewind(), "with the pendant you can rewind (3 lives)")
+	var hand0 := _hand_titles(g)
+	var stack_before := _stack_titles(g)
+	var e0: int = g.energy
+	var foe_intent: Array = g.foe.intent.duplicate(true)
+	await play(g, dom("Iron Guard", 1, 1))
+	g.pl.shield = 7
+	g.pl.add("fury", 3)
+	g.foe.hp -= 20
+	g.hand.pop_back()
+	expect(g.restart_turn(), "Rewind turn works")
+	expect(g.lives == 2 and g.energy == e0 and _hand_titles(g) == hand0 and _stack_titles(g) == stack_before, "back at the start of the turn for 1 life: same hand, same stack, same energy")
+	expect(g.pl.shield == 0 and g.pl.value("fury") == 0 and g.foe.hp == g.foe.max_hp and g.foe.intent == foe_intent and g.placed.is_empty() and g.occ.is_empty(), "the board, both fighters and the enemy plan are restored")
+	expect(not g.played_this_turn and g.stats.lost == 1, "no domino played yet this turn; the life is counted as lost")
+	g.lives = 1
+	expect(not g.can_rewind_turn() and not g.restart_turn(), "cannot rewind with only 1 life left")
+	g.lives = 3
+	g.unequip_relic(g.relics[0])
+	expect(not g.has_rewind() and not g.can_rewind_turn(), "unequipped, the pendant does nothing (no button)")
+	g.equip_relic(g.stored_relics[0])
+	g.busy = 1
+	expect(not g.can_rewind_turn(), "cannot rewind while something is happening")
+	g.busy = 0
+	# the same random numbers come out again after a rewind
+	g = _game_with_gear()
+	g.hand = []
+	g.discard = [dom("Slash", 2, 2), dom("Slash", 3, 3), dom("Slash", 4, 4)]
+	g.snapshot_turn()
+	var first: Array = []
+	for i in 3:
+		g.restack_random(1)
+		first.append(g.stack.size())
+	var order1 := _stack_titles(g)
+	g.restart_turn()
+	for i in 3:
+		g.restack_random(1)
+	expect(_stack_titles(g) == order1 and g.discard.size() == 0 , "after a rewind the same random choices happen again")
+	# next turn: the rewind goes to the start of THAT turn
+	g = _game_with_gear()
+	g.foe.intent = []
+	g.played_this_turn = true
+	await g.end_turn()
+	expect(g.turn_snap.bat.turn == 2 and g.turn_snap.lives == 3, "a new snapshot is taken at the start of every turn")
+
+	# ---------- gems, victory and the shop ----------
+	g = fresh()
+	expect(g.gems == 9, "you start with 9 gems")
+	g = Game.new()
+	g.relic_chance = 0.0
+	g.pl.hp = 40
+	g.foe.hp = 1
+	g.hand = [dom("Slash", 6, 6)]
+	g.ui.picks = [-1]
+	await play(g, dom("Slash", 6, 6), 0)
+	var vs: Dictionary = g.victory_summary
+	expect(g.ui.log.has("victory") and vs.gems >= 2 and vs.gems <= 3 and g.gems == 9 + vs.gems, "victory: 2-3 gems (+%d, now %d)" % [vs.gems, g.gems])
+	expect(vs.dealt > 0 and vs.lost == 0 and vs.battle == 1, "the victory summary has the damage dealt and the HP lost (%s)" % [vs])
+	expect(g.shop_pending and g.shop.size() == 8, "after the first battle there is always a shop with 8 things")
+	var kinds := {"domino": 0, "relic": 0, "weapon": 0}
+	var rare_domino := 0
+	for it in g.shop:
+		kinds[it.kind] += 1
+		if it.kind == "domino" and it.item.data.rarity == "r":
+			rare_domino += 1
+	expect(kinds == {"domino": 5, "relic": 2, "weapon": 1} and rare_domino >= 1, "the shop sells 5 dominoes (at least 1 rare), 2 artifacts and 1 weapon")
+	var price_ok := true
+	for it in g.shop:
+		var r: String = it.item.data.rarity if it.kind == "domino" else it.item.rarity
+		var lo := 0
+		var hi := 0
+		match r:
+			"c":
+				lo = 2
+				hi = 3
+			"u":
+				lo = 4
+				hi = 5
+			"r":
+				lo = 6
+				hi = 8
+		if it.kind == "relic":
+			lo *= 2
+			hi *= 2
+		if it.kind == "weapon":
+			lo = roundi(1.5 * lo)
+			hi = roundi(1.5 * hi)
+		if it.price < lo or it.price > hi:
+			price_ok = false
+			print("   bad price ", it.kind, " ", r, " ", it.price)
+	expect(price_ok, "prices: domino c 2-3, u 4-5, r 6-8; artifacts double; weapons 1.5x")
+	var wpn = null
+	for it in g.shop:
+		if it.kind == "weapon":
+			wpn = it.item
+	expect(wpn != null and wpn.weapon and wpn.title != "Short Sword", "the weapon on sale is one you do not own")
+	var shop_owned := true
+	for it in g.shop:
+		if it.kind == "relic" and g.relic_ids().has(it.item.id):
+			shop_owned = false
+	expect(shop_owned, "artifacts on sale are ones you do not own")
+	# buying
+	g.gems = 100
+	var di := -1
+	var ri := -1
+	var wi := -1
+	for i in g.shop.size():
+		match g.shop[i].kind:
+			"domino":
+				di = i
+			"relic":
+				ri = i
+			"weapon":
+				wi = i
+	var gems_before: int = g.gems
+	var price_d: int = g.shop_price(di)
+	expect(g.buy(di) and g.gems == gems_before - price_d and g.collection.has(g.shop[di].item) and g.shop[di].sold, "buying a domino takes gems and adds it to your collection")
+	expect(not g.buy(di), "it cannot be bought twice")
+	var rl = g.shop[ri].item
+	expect(g.buy(ri) and g.relics.has(rl), "buying an artifact equips it when there is a free slot")
+	g.weapon = Relics.by_id("short_sword")
+	var wp = g.shop[wi].item
+	expect(g.buy(wi) and g.stored_weapons.has(wp) and g.weapon.title == "Short Sword", "a bought weapon waits in the inventory (equip it yourself)")
+	g.gems = 0
+	g.shop[0].sold = false
+	expect(not g.buy(0), "cannot buy without enough gems")
+	g.gems = 100
+	g.add_relic(Relics.by_id("hagglers_tongue"))
+	var cheap := 99
+	for i in g.shop.size():
+		if not g.shop[i].sold:
+			cheap = mini(cheap, g.shop_price(i) - g.shop[i].price)
+	expect(cheap == -1, "Haggler's Tongue: everything costs 1 gem less")
+	g.shop[0].price = 1
+	expect(g.shop_price(0) == 1, "never below 1 gem")
+	# the shop is a 30% chance after the first battle
+	var shops := 0
+	for i in 400:
+		g = Game.new()
+		g.relic_chance = 0.0
+		g.new_game(1000 + i)
+		g.battle_no = 2
+		g._begin_reward()
+		if g.shop_pending:
+			shops += 1
+	expect(shops > 80 and shops < 160, "about 30%% of later victories offer the shop (%d of 400)" % shops)
+	g = Game.new()
+	g.relic_chance = 0.0
+	g.battle_no = 2
+	g._begin_reward()
+	expect(g.shop.is_empty() == not g.shop_pending, "no shop stock when there is no shop")
+	# gems artifact, extra life artifacts, extra draw
+	g = fresh("jewelers_loupe")
+	g.battle_no = 2
+	g.gems = 0
+	g._begin_reward()
+	expect(g.gems >= 3 and g.gems <= 4, "Jeweler's Loupe: 1 more gem after a battle (%d)" % g.gems)
+	g = fresh("spare_heart")
+	g.battle_no = 3
+	g._begin_reward()
+	expect(g.lives == 4, "Spare Heart: a life after the 3rd battle")
+	g = fresh("spare_heart")
+	g.battle_no = 2
+	g._begin_reward()
+	expect(g.lives == 3, "Spare Heart: nothing after the 2nd battle")
+	g = fresh("warm_hearth")
+	g.lives = 1
+	g.battle_no = 2
+	g._begin_reward()
+	expect(g.lives == 2, "Warm Hearth: a life if you win with only 1 life")
+	g = fresh("warm_hearth")
+	g.battle_no = 2
+	g._begin_reward()
+	expect(g.lives == 3, "Warm Hearth: nothing with more lives")
+	g = fresh("bottomless_satchel")
+	g.hand = [dom("Slash", 1, 1)]
+	await next_turn(g)
+	expect(g.hand.size() == 1 + 4 + 1 and Relics.by_id("bottomless_satchel").rarity == "r", "Bottomless Satchel (rare): 1 extra domino every turn")
+	expect(Relics.by_id("jewelers_loupe").rarity == "r" and Relics.by_id("time_pendant").starter, "Jeweler's Loupe is rare; the Time Pendant is a starter")
+	var ro := Relics.roll([], 200)
+	var seen_pendant := false
+	var cnt := {"c": 0, "u": 0, "r": 0}
+	for r in ro:
+		cnt[r.rarity] += 1
+		if r.id == "time_pendant":
+			seen_pendant = true
+	expect(not seen_pendant and cnt.c > cnt.u * 0 and cnt.r <= cnt.c, "starter artifacts are never offered; rare ones are the least common")
 
 	# ---------- icons ----------
 	expect(Icons.name_of("dmg") == "damage" and Icons.name_of("impS") == "impair" and Icons.name_of("impE") == "impair" and Icons.name_of("fire") == "fire", "kinds map to icon names; a name stays as it is")

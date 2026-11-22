@@ -20,6 +20,8 @@ const N := 20
 const MAXE := 10            # energy per turn
 const MAXH := 12            # most dominoes your hand can hold
 const START_LIVES := 3
+const START_GEMS := 9
+const SHOP_CHANCE := 0.3    # chance that "Next battle" is replaced by "Shop" (after battle 1 it always is)
 const PLAYER_HP := 50
 const EQUIP_SLOTS := 8      # artifacts you can have equipped at once; the rest wait in the inventory
 const RELIC_CHANCE := 0.2   # chance that a victory offers "a domino or a random artifact"
@@ -30,6 +32,12 @@ const DIRS := [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]
 const CH := {"p": Vector2(14, 8), "c": Vector2(3, 9)}
 
 var ui = NullUI.new()
+## Every random choice in the game goes through rng, so a run is repeatable from its seed: the stack
+## order and the enemy's plans of a battle come out the same if you restart the battle.
+var seed_value := 0
+var rng := RandomNumberGenerator.new()
+## A new game starts with the Short Sword and the Time Pendant. (Tests turn this off.)
+static var starter_gear := true
 var data: Array = Dominoes.build()    # the catalogue: one DominoData per kind of domino
 
 # board
@@ -44,6 +52,14 @@ var discard := []
 var hand := []
 var battle_deck := []     # every domino this battle started with (the stack window lists these)
 # artifacts (Relic objects, see relics/relics.gd)
+var weapon = null         # the ONE equipped weapon (a Relic with weapon true); it cannot be unequipped, only replaced
+var stored_weapons := []  # weapons you own but do not use
+var gems := START_GEMS
+var shop := []            # [{kind: domino | relic | weapon, item, price, sold}] while a shop is open
+var shop_pending := false # the screen between battles offers a shop instead of Next battle
+var victory_summary := {} # {dealt, lost, gems, battle} for the victory screen
+var battle_snap := {}     # the start of this battle (for Restart battle)
+var turn_snap := {}       # the start of this turn (for the Time Pendant)
 var relics := []          # equipped artifacts (only these do anything), at most EQUIP_SLOTS
 var stored_relics := []   # owned but not equipped
 var relic_chance := RELIC_CHANCE
@@ -70,8 +86,18 @@ func _init() -> void:
 	new_game()
 
 
-func new_game() -> void:
+func new_game(seed_override: int = -1) -> void:
+	seed_value = seed_override if seed_override >= 0 else 100000000 + randi() % 900000000
+	rng.seed = hash("run:%d" % seed_value)
 	collection = starter_collection()
+	weapon = null
+	stored_weapons.clear()
+	gems = START_GEMS
+	shop = []
+	shop_pending = false
+	victory_summary = {}
+	battle_snap = {}
+	turn_snap = {}
 	relics.clear()
 	stored_relics.clear()
 	artifact_offered = false
@@ -83,6 +109,9 @@ func new_game() -> void:
 	reason = ""
 	pl = Combatant.new(PLAYER_HP)
 	foe = Foe.new(1)
+	if starter_gear:
+		weapon = Relics.by_id("short_sword")
+		add_relic(Relics.by_id("time_pendant"))
 	start_battle()
 
 
@@ -101,7 +130,7 @@ func make_domino(type_id: int, pips_a: int, pips_b: int):
 
 ## A random domino of a random kind (never Garbage), with random pips.
 func new_domino():
-	return make_domino(Dominoes.rand_type(), randi() % 7, randi() % 7)
+	return make_domino(Dominoes.rand_type(rng), rng.randi() % 7, rng.randi() % 7)
 
 
 func garbage():
@@ -112,11 +141,13 @@ func garbage():
 func starter_collection() -> Array:
 	var out := []
 	for i in 20:
-		out.append(make_domino(i, randi() % 7, randi() % 7))
+		out.append(make_domino(i, rng.randi() % 7, rng.randi() % 7))
 	return out
 
 
 func start_battle() -> void:
+	rng.seed = hash("battle:%d:%d" % [seed_value, battle_no])    # the same stack and plans every time
+	battle_snap = {"hp": pl.hp, "lives": lives, "stats": stats.duplicate(true)}
 	occ.clear()
 	chars.clear()
 	placed.clear()
@@ -128,20 +159,37 @@ func start_battle() -> void:
 	energy = energy_cap()
 	played_this_turn = false
 	bat = {"played": 0, "hp_lost": false, "turn": 1, "attacks": 0, "last_attacks": -1,
-			"empty_end": false, "last_empty": false, "extra_draw": 0}
+			"empty_end": false, "last_empty": false, "extra_draw": 0,
+			"dealt0": stats.dealt, "taken0": stats.taken, "self0": stats.selfdmg}
 	stack.clear()
 	for d in collection:
 		stack.append(d.copy())
-	stack.shuffle()
+	var top := []
+	var bottom := []
+	for w in _weapon_dominoes("battle"):
+		match w.pos:
+			"bottom":
+				bottom.append(w.d)
+			"top":
+				top.append(w.d)
+			_:
+				stack.append(w.d)
+	rshuffle(stack)
+	for d in bottom:
+		stack.insert(0, d)       # the bottom of the stack: drawn last
+	for d in top:
+		stack.append(d)          # the top of the stack: drawn first
 	battle_deck = stack.duplicate()
 	discard.clear()
 	hand.clear()
 	draw(START_HAND)
 	new_intent()
 	fire_relics("battle")
+	_weapon_turn()
 	fire_relics("turn")
 	draw(bat.extra_draw)
 	busy = 0
+	snapshot_turn()
 
 
 # ---- the hand, stack and discard pile -------------------------------------
@@ -169,6 +217,49 @@ func draw(n: int) -> int:
 	return k
 
 
+func rshuffle(arr: Array) -> void:
+	for i in range(arr.size() - 1, 0, -1):
+		var j: int = rng.randi() % (i + 1)
+		var t = arr[i]
+		arr[i] = arr[j]
+		arr[j] = t
+
+
+## The dominoes your weapon adds when: "battle" or "turn". [{d: the domino, pos}].
+func _weapon_dominoes(when: String) -> Array:
+	var out := []
+	if weapon == null:
+		return out
+	for add in weapon.adds:
+		if add.when != when:
+			continue
+		var kind := Dominoes.index_of(add.t)
+		for i in add.n:
+			var pa: int = add.a if add.a >= 0 else rng.randi() % 7
+			var pb: int = add.b if add.b >= 0 else rng.randi() % 7
+			out.append({"d": make_domino(kind, pa, pb), "pos": add.pos})
+	return out
+
+
+## The weapon's start-of-turn dominoes go straight into your hand (if there is room).
+func _weapon_turn() -> void:
+	for w in _weapon_dominoes("turn"):
+		if hand.size() >= MAXH:
+			ui.hand_full()
+			continue
+		hand.append(w.d)
+		battle_deck.append(w.d)
+		announce_new_card()
+
+
+## Ephemeral dominoes still in your hand when the turn ends go to the discard pile.
+func _discard_ephemeral() -> void:
+	for d in hand.duplicate():
+		if d != null and d.data.ephemeral:
+			hand.erase(d)
+			discard.append(d)
+
+
 ## Tell the UI which card was just added to the hand. Kept as its own function because arithmetic
 ## written inline right after an await hit a Godot 4.1 to 4.4 bug (it read a stale temporary).
 func announce_new_card() -> void:
@@ -179,7 +270,7 @@ func announce_new_card() -> void:
 func discard_random_from_hand() -> bool:
 	if hand.is_empty():
 		return false
-	discard.append(hand.pop_at(randi() % hand.size()))
+	discard.append(hand.pop_at(rng.randi() % hand.size()))
 	_cache.clear()
 	return true
 
@@ -192,8 +283,8 @@ func discard_hand_card(index: int) -> void:
 
 func reroll_hand() -> void:
 	for d in hand:
-		d.a = randi() % 7
-		d.b = randi() % 7
+		d.a = rng.randi() % 7
+		d.b = rng.randi() % 7
 	stats.rerolls += hand.size()
 	_cache.clear()
 	ui.float_text("p", "Rerolled hand")
@@ -201,15 +292,15 @@ func reroll_hand() -> void:
 
 func reroll_card(index: int) -> void:
 	var d = hand[maxi(index, 0)]
-	d.a = randi() % 7
-	d.b = randi() % 7
+	d.a = rng.randi() % 7
+	d.b = rng.randi() % 7
 	stats.rerolls += 1
 	_cache.clear()
 
 
 func generate_into_stack(n: int) -> void:
 	for i in n:
-		stack.insert(randi() % (stack.size() + 1), new_domino())
+		stack.insert(rng.randi() % (stack.size() + 1), new_domino())
 
 
 ## Indices of the stack, sorted by domino name (so the stack order is not revealed).
@@ -266,9 +357,173 @@ func unequip_relic(relic) -> void:
 ## Ids of every artifact you own, equipped or not.
 func relic_ids() -> Array:
 	var out := []
-	for r in relics + stored_relics:
+	for r in relics + stored_relics + stored_weapons:
 		out.append(r.id)
+	if weapon != null:
+		out.append(weapon.id)
 	return out
+
+
+## Make another weapon your equipped one. The old one goes back to your inventory. A weapon can never
+## be put away without replacing it.
+func equip_weapon(w) -> bool:
+	if not stored_weapons.has(w):
+		return false
+	stored_weapons.erase(w)
+	if weapon != null:
+		stored_weapons.append(weapon)
+	weapon = w
+	return true
+
+
+## The Time Pendant is equipped: the Rewind turn button exists.
+func has_rewind() -> bool:
+	return relic_sum("rewind") > 0
+
+
+func can_rewind_turn() -> bool:
+	return has_rewind() and not ended and busy == 0 and lives > 1 and not turn_snap.is_empty() and turn_snap.lives > 1
+
+
+## Remember the start of this turn (hand, stack, board, both fighters, the random numbers ...).
+func snapshot_turn() -> void:
+	turn_snap = {
+		"hand": _states(hand), "stack": _states(stack), "discard": _states(discard),
+		"deck": battle_deck.duplicate(),
+		"occ": occ.duplicate(true), "placed": placed.duplicate(true),
+		"pl": pl.get_state(), "foe": foe.get_state(),
+		"energy": energy, "lives": lives, "played": played_this_turn,
+		"bat": bat.duplicate(true), "stats": stats.duplicate(true), "rng": rng.state,
+	}
+
+
+func _states(pile: Array) -> Array:
+	var out := []
+	for d in pile:
+		out.append({"d": d, "a": d.a, "b": d.b, "ang": d.ang} if d != null else null)
+	return out
+
+
+func _restore_pile(states: Array) -> Array:
+	var out := []
+	for st in states:
+		if st == null:
+			out.append(null)
+			continue
+		var d = st.d
+		d.a = st.a
+		d.b = st.b
+		d.ang = st.ang
+		out.append(d)
+	return out
+
+
+## Time Pendant: go back to the start of this turn and pay 1 life for it. Returns false if it cannot.
+func restart_turn() -> bool:
+	if not can_rewind_turn():
+		return false
+	var t: Dictionary = turn_snap
+	hand = _restore_pile(t.hand)
+	stack = _restore_pile(t.stack)
+	discard = _restore_pile(t.discard)
+	battle_deck = t.deck.duplicate()
+	occ = t.occ.duplicate(true)
+	placed = t.placed.duplicate(true)
+	pl.set_state(t.pl)
+	foe.set_state(t.foe)
+	energy = t.energy
+	played_this_turn = t.played
+	bat = t.bat.duplicate(true)
+	stats = t.stats.duplicate(true)
+	rng.state = t.rng
+	lives = t.lives - 1
+	stats.lost += 1
+	for r in relics + stored_relics:
+		r.reset_runtime()
+	busy = 0
+	_cache.clear()
+	ui.flash()
+	ui.refresh()
+	return true
+
+
+## Start this battle over: same stack order, same enemy plans, and your HP, lives and stats as they were
+## when it began. (Works after a defeat too.)
+func restart_battle() -> bool:
+	if battle_snap.is_empty() or (busy != 0 and not ended):
+		return false
+	lives = battle_snap.lives
+	stats = battle_snap.stats.duplicate(true)
+	pl.hp = battle_snap.hp
+	pl = fresh_player()
+	foe = Foe.new(battle_no)
+	ended = false
+	reason = ""
+	for r in relics + stored_relics:
+		r.reset_runtime()
+	start_battle()
+	ui.refresh()
+	return true
+
+
+# ---- gems and the shop ----------------------------------------------------
+
+func shop_price(i: int) -> int:
+	return maxi(1, shop[i].price - relic_sum("shop_discount"))
+
+
+func buy(i: int) -> bool:
+	if i < 0 or i >= shop.size() or shop[i].sold or gems < shop_price(i):
+		return false
+	gems -= shop_price(i)
+	shop[i].sold = true
+	match shop[i].kind:
+		"domino":
+			collection.append(shop[i].item)
+		"relic":
+			add_relic(shop[i].item)
+		"weapon":
+			stored_weapons.append(shop[i].item)
+	return true
+
+
+## What a rarity costs as a domino: common 2-3 gems, uncommon 4-5, rare 6-8.
+func _domino_price(r: String) -> int:
+	match r:
+		"c":
+			return rng.randi_range(2, 3)
+		"u":
+			return rng.randi_range(4, 5)
+		"r":
+			return rng.randi_range(6, 8)
+	return 1
+
+
+## 5 dominoes (one of them always rare), 2 artifacts (twice the price of a domino of their rarity) and
+## 1 weapon (1.5 times). Rarer ones turn up less often (60 / 30 / 10).
+func generate_shop() -> Array:
+	var doms := [make_domino(Dominoes.rand_type_of("r", rng), rng.randi() % 7, rng.randi() % 7)]
+	for i in 4:
+		doms.append(new_domino())
+	rshuffle(doms)
+	var items := []
+	for d in doms:
+		items.append({"kind": "domino", "item": d, "price": _domino_price(d.data.rarity), "sold": false})
+	for r in Relics.roll(relic_ids(), 2, rng):
+		items.append({"kind": "relic", "item": r, "price": 2 * _domino_price(r.rarity), "sold": false})
+	for w in Relics.roll_weapons(relic_ids(), 1, rng):
+		items.append({"kind": "weapon", "item": w, "price": roundi(1.5 * _domino_price(w.rarity)), "sold": false})
+	return items
+
+
+## What happened in the battle you just won, for the victory screen.
+func _victory_numbers() -> Dictionary:
+	return {
+		"dealt": stats.dealt - bat.dealt0,
+		"lost": (stats.taken - bat.taken0) + (stats.selfdmg - bat.self0),
+		"gems": rng.randi_range(2, 3) + relic_sum("gems"),
+		"battle": battle_no,
+	}
 
 
 ## Max HP at the start of a battle: the base plus artifacts that raise it.
@@ -369,8 +624,8 @@ func restack_random(n: int = 1) -> int:
 	for i in n:
 		if discard.is_empty():
 			break
-		var d = discard.pop_at(randi() % discard.size())
-		stack.insert(randi() % (stack.size() + 1), d)
+		var d = discard.pop_at(rng.randi() % discard.size())
+		stack.insert(rng.randi() % (stack.size() + 1), d)
 		moved += 1
 	if moved > 0:
 		_cache.clear()
@@ -655,17 +910,20 @@ func lose_life() -> void:
 ## The enemy plans 1 or 2 dominoes per turn and shows each one as its intent.
 ## Attacks and blocks are common; the other intents are uncommon.
 func new_intent() -> void:
-	var n := 1 if randf() < 0.5 else 2
+	# planned from the seed, the battle and the turn only: restarting gives the same plans
+	var r_in := RandomNumberGenerator.new()
+	r_in.seed = hash("intent:%d:%d:%d" % [seed_value, battle_no, bat.turn])
+	var n := 1 if r_in.randf() < 0.5 else 2
 	var lv := battle_no - 1
 	var out := []
 	for i in n:
-		var r := randf()
+		var r := r_in.randf()
 		if r < 0.62:
-			out.append({"k": "atk", "v": 4 + lv + randi() % (8 + lv)})
+			out.append({"k": "atk", "v": 4 + lv + r_in.randi() % (8 + lv)})
 		elif r < 0.75:
-			out.append({"k": "blk", "v": 4 + lv + randi() % 5})
+			out.append({"k": "blk", "v": 4 + lv + r_in.randi() % 5})
 		elif r < 0.82:
-			out.append({"k": "lifeatk", "v": 5 + lv + randi() % (6 + lv)})
+			out.append({"k": "lifeatk", "v": 5 + lv + r_in.randi() % (6 + lv)})
 		elif r < 0.88:
 			out.append({"k": "discH"})
 		elif r < 0.94:
@@ -677,14 +935,14 @@ func new_intent() -> void:
 
 ## The computer plays one domino built to match the board. Returns true on success.
 func cpu_play() -> bool:
-	var rare := randf() < 0.12      # rarely plays a domino that touches no other domino
+	var rare := rng.randf() < 0.12      # rarely plays a domino that touches no other domino
 	var own := false
 	for p in placed:
 		if p.owner == "c":
 			own = true
 			break
 	for _attempt in 500:
-		var m := {"x": randi() % N, "y": randi() % N, "rot": randi() % 4, "a": 0, "b": 0}
+		var m := {"x": rng.randi() % N, "y": rng.randi() % N, "rot": rng.randi() % 4, "a": 0, "b": 0}
 		clamp_m(m)
 		var cs := cells_of(m)
 		var req := [-1, -1]
@@ -712,8 +970,8 @@ func cpu_play() -> bool:
 			continue
 		if rare and touch:
 			continue
-		m.a = req[0] if req[0] != -1 else randi() % 7
-		m.b = req[1] if req[1] != -1 else randi() % 7
+		m.a = req[0] if req[0] != -1 else rng.randi() % 7
+		m.b = req[1] if req[1] != -1 else rng.randi() % 7
 		if not check(m, true, "c").ok:
 			continue
 		place(m, "c")
@@ -793,6 +1051,7 @@ func end_turn() -> void:
 	if busy != 0 or ended:
 		return
 	busy = 1
+	_discard_ephemeral()
 	bat.empty_end = hand.is_empty()
 	fire_relics("turn_end")
 	stats.wasted += energy
@@ -832,6 +1091,7 @@ func end_turn() -> void:
 		await ui.pause(0.38)
 	ui.fresh(-1)
 	busy = 0
+	snapshot_turn()
 	ui.note_play()
 	ui.refresh()
 	await stuck_check()
@@ -859,7 +1119,7 @@ func _enemy_act(it: Dictionary) -> void:
 		"junk":
 			for i in 3:
 				stack.append(garbage())
-			stack.shuffle()
+			rshuffle(stack)
 			ui.float_text("p", "3 Garbage shuffled in")
 
 
@@ -874,6 +1134,7 @@ func _new_turn_state() -> void:
 	bat.extra_draw = 0
 	energy = energy_cap()
 	played_this_turn = false
+	_weapon_turn()
 	fire_relics("turn")        # before the excess shield is cut, so relics can look at it
 	if pl.shield > pl.max_shield:
 		pl.shield = pl.max_shield
@@ -900,6 +1161,7 @@ func stuck_check() -> void:
 func battle_won() -> void:
 	busy = 3
 	var opts := _begin_reward()
+	await ui.victory(self, victory_summary)
 	await _reward_step(opts)
 	await ui.intermission(self)
 	_start_next_battle()
@@ -935,13 +1197,18 @@ func _reward_cards(n: int) -> Array:
 
 func _begin_reward() -> Array:
 	stats.battles += 1
+	victory_summary = _victory_numbers()
+	gems += victory_summary.gems
+	fire_relics("victory")
 	pl = fresh_player()      # statuses and shield are cleared, HP is kept
+	shop_pending = battle_no == 1 or rng.randf() < SHOP_CHANCE
+	shop = generate_shop() if shop_pending else []
 	ui.refresh()
 	var opts := []
 	for i in 3 + relic_sum("rewards"):
 		opts.append(new_domino())
 	reward_note = ""
-	artifact_offered = randf() < relic_chance and not Relics.roll(relic_ids(), 1).is_empty()
+	artifact_offered = rng.randf() < relic_chance and not Relics.roll(relic_ids(), 1, rng).is_empty()
 	return opts
 
 
@@ -955,7 +1222,7 @@ func _take_domino(c: int, opts: Array) -> void:
 
 
 func _give_random_relic() -> void:
-	var got: Array = Relics.roll(relic_ids(), 1)
+	var got: Array = Relics.roll(relic_ids(), 1, rng)
 	if got.is_empty():
 		reward_note = "No artifacts left to find."
 		return

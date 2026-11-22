@@ -5,6 +5,7 @@ extends PanelContainer
 signal stack_pressed
 signal inventory_pressed
 signal next_pressed
+signal shop_pressed
 
 @onready var title_l: Label = %Title
 @onready var note_l: Label = %Note
@@ -19,7 +20,18 @@ func _ready() -> void:
 	visible = false
 	stack_b.pressed.connect(func(): stack_pressed.emit())
 	inv_b.pressed.connect(func(): inventory_pressed.emit())
-	next_b.pressed.connect(func(): next_pressed.emit())
+	next_b.pressed.connect(_on_main_button)
+
+
+var _game = null
+
+
+## The last button is SHOP while a shop is waiting, then NEXT BATTLE.
+func _on_main_button() -> void:
+	if _game != null and _game.shop_pending:
+		shop_pressed.emit()
+	else:
+		next_pressed.emit()
 
 
 func ask(game) -> void:
@@ -30,6 +42,8 @@ func ask(game) -> void:
 
 
 func show_stats(game) -> void:
+	_game = game
+	next_b.text = "SHOP" if game.shop_pending else "NEXT BATTLE"
 	var pl = game.pl
 	title_l.text = "BATTLE %d WON" % game.battle_no
 	note_l.text = game.reward_note
@@ -40,10 +54,12 @@ func show_stats(game) -> void:
 	var list := [
 		["HP", "%d / %d" % [pl.hp, pl.max_hp]],
 		["Lives", "x%d" % game.lives],
+		["Gems", game.gems],
 		["Next battle", "Battle %d" % (game.battle_no + 1)],
 		["Dominoes owned", game.collection.size()],
+		["Weapon", game.weapon.title if game.weapon != null else "none"],
 		["Artifacts equipped", "%d / %d" % [game.relics.size(), game.EQUIP_SLOTS]],
-		["Artifacts unequipped", game.stored_relics.size()],
+		["Unequipped", "%d artifacts, %d weapons" % [game.stored_relics.size(), game.stored_weapons.size()]],
 		["Damage dealt", s.dealt],
 		["Damage taken", s.taken],
 	]

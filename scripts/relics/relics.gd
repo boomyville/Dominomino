@@ -2,6 +2,8 @@ extends RefCounted
 ## The relic catalogue: 30 relics. Edit the table to rebalance or add one (see relic.gd for what
 ## "on", "if" and "do" can be). Each row: {n: name, r: rarity (c, u, r), on: hook, if: condition,
 ## do: action, v: amount, pip: pip number for the "pip" condition, once: once per turn, text}.
+## starter: true means you begin the run with it (it is never offered or sold).
+## WEAPONS (below) are relics that add dominoes; you have exactly one equipped.
 ## In text, :name: shows that icon (:energy: :shield: :fury: :power: :impair: :heal: :draw: ...).
 ## A relic's own picture is img/icons/<its name in lowercase with underscores>.png, for example
 ## img/icons/overcharged_core.png (a gem is drawn when there is no file).
@@ -75,17 +77,51 @@ const TABLE := [
 	# ---- end of turn
 	{"n": "Bandage Roll", "r": "u", "on": "turn_end", "if": "halfHp", "do": "heal", "v": 4,
 		"text": "If you end your turn with half your HP or less, heal 4 HP."},
+	# ---- lives, cards, gems and the shop
+	{"n": "Time Pendant", "r": "r", "starter": true, "on": "passive", "do": "rewind", "v": 1,
+		"text": "Adds a Rewind turn button: restart the current turn for the cost of 1 life (not with only 1 life left)."},
+	{"n": "Spare Heart", "r": "r", "on": "victory", "if": "every3", "do": "life", "v": 1,
+		"text": "Gain 1 life after every 3rd battle you win."},
+	{"n": "Warm Hearth", "r": "u", "on": "victory", "if": "oneLife", "do": "life", "v": 1,
+		"text": "If you win a battle with only 1 life, gain 1 life."},
+	{"n": "Bottomless Satchel", "r": "r", "on": "turn", "do": "draw", "v": 1,
+		"text": "Draw 1 extra domino at the start of every turn."},
+	{"n": "Jeweler's Loupe", "r": "r", "on": "passive", "do": "gems", "v": 1,
+		"text": "Gain 1 more gem after every battle."},
+	{"n": "Haggler's Tongue", "r": "u", "on": "passive", "do": "shop_discount", "v": 1,
+		"text": "Everything in the shop costs 1 gem less (never below 1)."},
+]
+
+## The weapons. You own as many as you find but only ONE is equipped: it adds its dominoes to the
+## stack or your hand (see relic.gd). They are never unequipped, only replaced by another weapon.
+const WEAPONS := [
+	{"n": "Short Sword", "r": "c", "weapon": true, "starter": true,
+		"adds": [{"t": "Slash", "n": 3, "a": -1, "b": -1, "when": "battle", "pos": "stack"},
+				{"t": "Quick Strike", "n": 2, "a": 1, "b": 1, "when": "battle", "pos": "stack"}],
+		"text": "Adds 3 Slash and 2 Quick Strike to your stack at the start of every battle."},
+	{"n": "Long Sword", "r": "u", "weapon": true,
+		"adds": [{"t": "Heavy Blade", "n": 2, "a": 4, "b": 3, "when": "battle", "pos": "bottom"}],
+		"text": "Adds 2 Heavy Blade to the BOTTOM of your stack at the start of every battle."},
+	{"n": "Rapier", "r": "u", "weapon": true,
+		"adds": [{"t": "En Garde", "n": 1, "a": 2, "b": 2, "when": "turn", "pos": "hand"}],
+		"text": "Adds an En Garde to your hand at the start of every turn."},
+	{"n": "Sawtooth Blade", "r": "u", "weapon": true,
+		"adds": [{"t": "Rip and Shred", "n": 2, "a": 2, "b": 1, "when": "battle", "pos": "stack"}],
+		"text": "Adds 2 Rip and Shred to your stack at the start of every battle."},
+	{"n": "Shining Blade", "r": "r", "weapon": true,
+		"adds": [{"t": "Cutting Edge", "n": 1, "a": 0, "b": 1, "when": "battle", "pos": "top"}],
+		"text": "Adds a Cutting Edge to the TOP of your stack at the start of every battle."},
 ]
 
 
-## Build the Relic for one row of TABLE.
+## Build the Relic for one row of TABLE or WEAPONS.
 static func make(row: Dictionary):
 	var r = Relic.new()
 	r.setup(row, Icons)
 	return r
 
 
-## Every relic in the catalogue.
+## Every artifact in the catalogue (not the weapons).
 static func build() -> Array:
 	var out := []
 	for row in TABLE:
@@ -93,28 +129,47 @@ static func build() -> Array:
 	return out
 
 
-## One relic by id ("overcharged_core") or null.
+## Every weapon.
+static func build_weapons() -> Array:
+	var out := []
+	for row in WEAPONS:
+		out.append(make(row))
+	return out
+
+
+## One artifact or weapon by id ("overcharged_core", "short_sword") or null.
 static func by_id(relic_id: String):
-	for row in TABLE:
+	for row in TABLE + WEAPONS:
 		if Icons.slug(row.n) == relic_id:
 			return make(row)
 	return null
 
 
-## Up to n different relics you do not own yet: 60% common, 30% uncommon, 10% rare (a rarity that
-## has run out is skipped).
-static func roll(owned_ids: Array, n: int) -> Array:
+## Up to n different artifacts you do not own yet: 60% common, 30% uncommon, 10% rare (a rarity that has
+## run out is skipped). Starter artifacts and weapons are never rolled. Pass the game's
+## RandomNumberGenerator to make it repeatable from the seed.
+static func roll(owned_ids: Array, n: int, rng: RandomNumberGenerator = null) -> Array:
+	return _roll_from(build(), owned_ids, n, rng)
+
+
+## The same for weapons.
+static func roll_weapons(owned_ids: Array, n: int, rng: RandomNumberGenerator = null) -> Array:
+	return _roll_from(build_weapons(), owned_ids, n, rng)
+
+
+static func _roll_from(all: Array, owned_ids: Array, n: int, rng: RandomNumberGenerator) -> Array:
 	var pool := {"c": [], "u": [], "r": []}
-	for r in build():
-		if not owned_ids.has(r.id):
+	for r in all:
+		if not owned_ids.has(r.id) and not r.starter:
 			pool[r.rarity].append(r)
 	var out := []
 	for i in n:
-		var x := randf()
+		var x: float = rng.randf() if rng != null else randf()
 		var want := "c" if x < 0.6 else ("u" if x < 0.9 else "r")
 		var order := [want] + ["c", "u", "r"].filter(func(k): return k != want)
 		for k in order:
 			if not pool[k].is_empty():
-				out.append(pool[k].pop_at(randi() % pool[k].size()))
+				var at: int = (rng.randi() if rng != null else randi()) % pool[k].size()
+				out.append(pool[k].pop_at(at))
 				break
 	return out

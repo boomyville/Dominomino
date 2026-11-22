@@ -11,7 +11,7 @@ func _initialize() -> void:
 	DirAccess.make_dir_recursive_absolute(dir)
 	var n := 0
 	var names := Icons.all_names()
-	for r in Relics.build():
+	for r in Relics.build() + Relics.build_weapons():
 		names.append(r.id)
 	for icon_name in names:
 		var path: String = dir + icon_name + ".png"

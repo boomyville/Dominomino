@@ -42,7 +42,7 @@ Run `godot --headless -s tools/export_icon_templates.gd` to write every built-in
 
 Kind -> name (what the code uses inside): `dmg`=`damage`, `hit`=`multi_hit`, `shield`=`shield`, `maxs`=`max_shield`, `draw`=`draw`, `discR`=`discard_random`, `discP`=`discard`, `tutor`=`tutor`, `power`=`power`, `boost`=`boost`, `heal`=`heal`, `rerollA`=`reroll_all`, `rerollP`=`reroll`, `fury`=`fury`, `impS`=`impair`, `impE`=`impair`, `selfdmg`=`self_damage`, `gen`=`generate`, `life`=`life`, `paylife`=`lose_life`, `atk`=`attack`, `lifeatk`=`attack_life`, `blk`=`block`, `discH`=`discard`, `junk`=`garbage`
 
-## Relic icons
+## Artifact icons
 
 - `overcharged_core.png` (Overcharged Core)
 - `starter_spark.png` (Starter Spark)
@@ -74,3 +74,17 @@ Kind -> name (what the code uses inside): `dmg`=`damage`, `hit`=`multi_hit`, `sh
 - `double_vision.png` (Double Vision)
 - `hollow_bone.png` (Hollow Bone)
 - `bandage_roll.png` (Bandage Roll)
+- `time_pendant.png` (Time Pendant)
+- `spare_heart.png` (Spare Heart)
+- `warm_hearth.png` (Warm Hearth)
+- `bottomless_satchel.png` (Bottomless Satchel)
+- `jewelers_loupe.png` (Jeweler's Loupe)
+- `hagglers_tongue.png` (Haggler's Tongue)
+
+## Weapon icons
+
+- `short_sword.png` (Short Sword)
+- `long_sword.png` (Long Sword)
+- `rapier.png` (Rapier)
+- `sawtooth_blade.png` (Sawtooth Blade)
+- `shining_blade.png` (Shining Blade)

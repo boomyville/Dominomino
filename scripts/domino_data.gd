@@ -4,9 +4,10 @@ extends RefCounted
 
 var id := 0                # position in the catalogue
 var title := ""
-var rarity := "c"          # c common, u uncommon, r rare, g junk (Garbage)
+var rarity := "c"          # c common, u uncommon, r rare, w weapon (only a weapon adds it), g junk (Garbage)
 var condition = null       # a Condition, or null when it can always be played
 var effects := []          # Effect objects, played in order
+var ephemeral := false     # if it is still in your hand when you end the turn, it goes to the discard pile
 
 
 func has_attack() -> bool:
@@ -24,4 +25,4 @@ func rarity_name() -> String:
 	return RARITY_NAMES[rarity]
 
 
-const RARITY_NAMES := {"c": "Common", "u": "Uncommon", "r": "Rare", "g": "Junk"}
+const RARITY_NAMES := {"c": "Common", "u": "Uncommon", "r": "Rare", "w": "Weapon", "g": "Junk"}

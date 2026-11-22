@@ -1,11 +1,11 @@
 extends RefCounted
-## The domino catalogue: 92 dominoes plus Garbage (the last entry). The first 80 come from the web build.
+## The domino catalogue: 102 dominoes plus Garbage (the last entry). The first 80 come from the web build.
 ## Ported from the web build (index.html). Edit the numbers here to rebalance.
 ## build() turns this table into DominoData objects (with Effect and Condition objects inside).
 ##
 ## Each domino: {"n": name, "r": rarity (c, u, r, g), "c": play condition id ("" = always playable), "fx": [effects]}
 ## Each effect: {"k": kind, "m": value mode, "a": a, "b": b, "t": hit count}
-## (pipdmg also has "p": which pip counts and "w": "board" or "hand")
+## "e": true makes a domino ephemeral. (pipdmg also has "p": which pip counts and "w": "board" or "hand")
 ## The effect size comes from the pip total s (0 to 12), so bigger pips mean bigger effects:
 ##   S = s*a + b      C = ceil(s/a) + b      F = floor(s/a) + b
 ##   K = b (constant) L = max(1, round(a*s + b))      no "m" = the effect has no number
@@ -14,7 +14,7 @@ extends RefCounted
 ##   dmg hit(t hits)  shield  maxs (max shield)  draw  discR (discard random)  discP (discard of your choice)
 ##   tutor (find in stack)  power  boost  heal  rerollA (all in hand)  rerollP (one of your choice)
 ##   fury  impS (impair yourself)  impE (impair the enemy)  selfdmg (lose HP)  gen (add random dominoes to stack)  life
-##   paylife (lose a life, pair with condition "lives2")  pipdmg (damage per pip of one number on the board / in hand)
+##   playedpips (damage = pips of every domino you played)  paylife (lose a life, pair with condition "lives2")  pipdmg (damage per pip of one number on the board / in hand)
 
 const TY := [
 	{"n": "Slash", "r": "c", "c": "", "fx": [{"k": "dmg", "m": "S", "a": 1, "b": 2}]},
@@ -111,11 +111,23 @@ const TY := [
 	{"n": "Hex of Ruin", "r": "u", "c": "lives2", "fx": [{"k": "paylife", "m": "K", "a": 0, "b": 1}, {"k": "impE", "m": "L", "a": 1.2, "b": 4}]},
 	{"n": "Crimson Ritual", "r": "r", "c": "lives2", "fx": [{"k": "paylife", "m": "K", "a": 0, "b": 1}, {"k": "fury", "m": "L", "a": 1.2, "b": 5}, {"k": "power", "m": "L", "a": 0.3, "b": 1}]},
 	{"n": "Sacrificial Blade", "r": "r", "c": "lives2", "fx": [{"k": "paylife", "m": "K", "a": 0, "b": 1}, {"k": "hit", "m": "L", "a": 1.2, "b": 3, "t": 3}]},
+	# ---- ephemeral: stronger than the normal kind, but discarded at the end of the turn if you do not play them
+	{"n": "Lunge", "r": "c", "c": "", "e": true, "fx": [{"k": "dmg", "m": "L", "a": 1.6, "b": 4}]},
+	{"n": "Flash Guard", "r": "c", "c": "", "e": true, "fx": [{"k": "shield", "m": "L", "a": 1.6, "b": 5}]},
+	{"n": "Focus", "r": "u", "c": "", "e": true, "fx": [{"k": "fury", "m": "L", "a": 1.0, "b": 3}]},
+	{"n": "Quick Draw", "r": "u", "c": "", "e": true, "fx": [{"k": "draw", "m": "L", "a": 0.3, "b": 3}]},
+	{"n": "Overpower", "r": "r", "c": "", "e": true, "fx": [{"k": "dmg", "m": "L", "a": 3.0, "b": 9}]},
+	# ---- weapon dominoes (rarity w): only a weapon adds them, they are never offered as rewards
+	{"n": "Quick Strike", "r": "w", "c": "first", "e": true, "fx": [{"k": "dmg", "m": "L", "a": 2.5, "b": 3}]},
+	{"n": "Heavy Blade", "r": "w", "c": "", "fx": [{"k": "dmg", "m": "L", "a": 3.0, "b": 8}]},
+	{"n": "En Garde", "r": "w", "c": "", "e": true, "fx": [{"k": "shield", "m": "L", "a": 1.0, "b": 4}, {"k": "dmg", "m": "L", "a": 1.2, "b": 3}]},
+	{"n": "Rip and Shred", "r": "w", "c": "", "fx": [{"k": "playedpips", "m": "K", "a": 0, "b": 1}]},
+	{"n": "Cutting Edge", "r": "w", "c": "", "fx": [{"k": "hit", "m": "K", "a": 0, "b": 5, "t": 5}]},
 	{"n": "Garbage", "r": "g", "c": "never", "fx": []},
 ]
 
 ## Index of Garbage: always the last row of TY.
-const GARBAGE := 92
+const GARBAGE := 102
 
 const DominoData = preload("res://scripts/domino_data.gd")
 const EffectFactory = preload("res://scripts/effects/effect_factory.gd")
@@ -132,18 +144,34 @@ static func build() -> Array:
 		d.title = row.n
 		d.rarity = row.r
 		d.condition = ConditionFactory.make(row.c)
+		d.ephemeral = row.get("e", false)
 		for e in row.fx:
 			d.effects.append(EffectFactory.make(e))
 		out.append(d)
 	return out
 
 
-## Random domino type by rarity: 60% common, 30% uncommon, 10% rare (never Garbage).
-static func rand_type() -> int:
-	var x := randf()
+## A random kind of domino (never Garbage or a weapon domino): 60% common, 30% uncommon, 10% rare.
+## Pass the game's RandomNumberGenerator to make it repeatable from the seed.
+static func rand_type(rng: RandomNumberGenerator = null) -> int:
+	var x: float = rng.randf() if rng != null else randf()
 	var r := "c" if x < 0.6 else ("u" if x < 0.9 else "r")
+	return rand_type_of(r, rng)
+
+
+## A random kind of this rarity.
+static func rand_type_of(r: String, rng: RandomNumberGenerator = null) -> int:
 	var pool := []
 	for i in TY.size():
 		if TY[i].r == r:
 			pool.append(i)
-	return pool[randi() % pool.size()]
+	var k: int = rng.randi() if rng != null else randi()
+	return pool[k % pool.size()]
+
+
+## Position of a kind in the catalogue by its name (-1 if there is none).
+static func index_of(title: String) -> int:
+	for i in TY.size():
+		if TY[i].n == title:
+			return i
+	return -1

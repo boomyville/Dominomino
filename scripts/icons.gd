@@ -163,6 +163,8 @@ static func relic_texture(relic) -> Texture2D:
 	if tex != null:
 		return tex
 	var rows: Array = GEM_OUTLINE
+	if relic.weapon:
+		return _pixel_texture("weapon", SWORD, Color.BLACK)
 	if relic.rarity == "u":
 		rows = GEM
 	elif relic.rarity == "r":

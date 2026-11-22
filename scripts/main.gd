@@ -61,6 +61,8 @@ func _ready() -> void:
 	hud.cancel_pressed.connect(_on_cancel_pressed)
 	hud.end_turn_pressed.connect(_on_end_pressed)
 	hud.new_game_pressed.connect(_on_new_game)
+	hud.restart_battle_pressed.connect(_on_restart_battle)
+	hud.rewind_turn_pressed.connect(_on_rewind_turn)
 	hud.domino_tapped.connect(_on_domino_tapped)
 	hud.domino_drag_started.connect(_on_drag_started)
 	hud.domino_drag_moved.connect(_on_drag_moved)
@@ -92,6 +94,11 @@ func pause(sec: float) -> void:
 func pick(title: String, sub: String, list: Array, skip: String = "") -> int:
 	var r: int = await hud.pick(game, title, sub, list, skip)
 	return r
+
+
+## The victory screen after a battle. Waits for Continue.
+func victory(game_ref, summary: Dictionary) -> void:
+	await hud.victory(game_ref, summary)
 
 
 ## The screen between battles (stack, inventory, Next battle). Waits for Next battle.
@@ -215,6 +222,29 @@ func _on_new_game() -> void:
 	hud.set_ghost(false, null, Vector2.ZERO)
 	_refresh_ui()
 	game.stuck_check()
+
+
+## Forget any half-made move (selection, drag, placed-but-not-confirmed domino).
+func _clear_input() -> void:
+	sel = -1
+	drag = null
+	pending = null
+	pdrag = null
+	swing_fx = null
+	hud.set_ghost(false, null, Vector2.ZERO)
+
+
+func _on_restart_battle() -> void:
+	if game.restart_battle():
+		_clear_input()
+		_refresh_ui()
+		game.stuck_check()
+
+
+func _on_rewind_turn() -> void:
+	if pending == null and game.restart_turn():
+		_clear_input()
+		_refresh_ui()
 
 
 func _can_play_now() -> bool:

@@ -61,6 +61,8 @@ static func fill(rt: RichTextLabel, game, d, index: int = -1) -> void:
 		else:
 			var met: bool = index < 0 or game.cond_ok(index)
 			rt.append_text("[i]Only if %s%s.[/i]\n" % [def.condition.text, "" if met else " (not met)"])
+	if def.ephemeral:
+		rt.append_text("[i]Ephemeral: discarded at the end of the turn if you do not play it.[/i]\n")
 	var mods: Array = game.pl.status_lines()
 	if index >= 0 and def.has_attack() and mods.size() > 0:
 		rt.append_text("Includes " + ", ".join(mods))
@@ -73,7 +75,7 @@ static func fill_relic(rt: RichTextLabel, relic) -> void:
 	rt.push_bold()
 	rt.append_text("  " + relic.title)
 	rt.pop()
-	rt.append_text("\n%s relic\n" % relic.rarity_name())
+	rt.append_text("\n%s %s\n" % [relic.rarity_name(), relic.kind_name()])
 	append_rich(rt, relic.text)
 
 
@@ -94,5 +96,5 @@ static func fill_relic_line(rt: RichTextLabel, relic) -> void:
 	rt.push_bold()
 	rt.append_text(relic.title)
 	rt.pop()
-	rt.append_text("  (%s)\n" % relic.rarity_name())
+	rt.append_text("  (%s %s)\n" % [relic.rarity_name(), relic.kind_name()])
 	append_rich(rt, relic.text)

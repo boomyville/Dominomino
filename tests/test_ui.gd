@@ -54,14 +54,14 @@ func _initialize() -> void:
 	g.add_relic(Relics.by_id("war_drum"))
 	g.add_relic(Relics.by_id("tile_armor"))
 	main._refresh_ui()
-	expect(hud.relic_bar.get_child_count() == 2 and hud.relic_bar.get_child(0).tooltip_text.begins_with("War Drum"), "relic bar shows owned relics with tooltips")
+	expect(hud.relic_bar.get_child_count() == 4 and hud.relic_bar.get_child(0).tooltip_text.begins_with("Short Sword") and hud.relic_bar.get_child(2).tooltip_text.begins_with("War Drum"), "relic bar: weapon first, then the artifacts, with tooltips")
 	var got := [-5]
 	hud.pick_window.chosen.connect(func(i): got[0] = i)
 	hud.pick_window.ask(g, "Choose a relic", "x", Relics.roll([], 3), "Skip")
 	await process_frame
 	var grid = hud.pick_window.grid
 	expect(grid.get_child_count() == 3 and not grid.get_child(0).picture.visible, "relic cards show text only")
-	expect(grid.get_child(0).body.get_parsed_text().contains("relic"), "relic card text has the rarity line")
+	expect(grid.get_child(0).body.get_parsed_text().contains("artifact"), "relic card text has the rarity line")
 	grid.get_child(1).pressed.emit()
 	await process_frame
 	expect(got[0] == 1, "choosing a relic card answers its index")
@@ -192,5 +192,87 @@ func _initialize() -> void:
 	expect(hud.pick_window.grid.get_child_count() == 2 and hud.pick_window.grid.get_child(1).body.get_parsed_text().contains("artifact"), "the reward choice shows a domino card and an artifact card")
 	hud.pick_window.grid.get_child(1).pressed.emit()
 	await process_frame
+	# ---- seed, restart battle, rewind turn
+	main._clear_input()
+	g.hand = g.hand
+	hud.open_settings()
+	expect(hud.settings_window.seed_edit.text == str(g.seed_value) and not hud.settings_window.seed_edit.editable, "settings show the seed, read only")
+	hud.settings_window.close()
+	main._refresh_ui()
+	expect(hud.rewind_b.visible and not hud.rewind_b.disabled and hud.restart_b.visible, "Rewind turn (pendant) and Restart battle buttons are there")
+	var lives0: int = g.lives
+	hud.rewind_b.pressed.emit()
+	expect(g.lives == lives0 - 1, "the Rewind button costs a life")
+	g.lives = 1
+	main._refresh_ui()
+	expect(hud.rewind_b.disabled, "Rewind is disabled with 1 life")
+	g.lives = 3
+	var pendant = null
+	for r in g.relics:
+		if r.id == "time_pendant":
+			pendant = r
+	g.unequip_relic(pendant)
+	main._refresh_ui()
+	expect(not hud.rewind_b.visible, "no pendant equipped: the button disappears")
+	g.equip_relic(pendant)
+	g.pl.hp = 10
+	g.energy = 2
+	var first_hand := []
+	hud.restart_b.pressed.emit()
+	await process_frame
+	expect(g.pl.hp == g.battle_snap.hp and g.energy == 10, "the Restart battle button starts the battle over")
+	# ---- victory screen
+	var vdone := [false]
+	var vrun := func():
+		await hud.victory(g, {"dealt": 31, "lost": 7, "gems": 3, "battle": 1})
+		vdone[0] = true
+	vrun.call()
+	await process_frame
+	var vw = hud.victory_window
+	expect(vw.visible and hud.modal_layer.visible and vw.rows.get_child(1).text == "31" and vw.rows.get_child(3).text == "7" and vw.rows.get_child(5).text.begins_with("+3"), "victory screen: damage dealt, HP lost, gems earned")
+	vw.continue_b.pressed.emit()
+	await process_frame
+	expect(vdone[0] and not vw.visible and not hud.modal_layer.visible, "Continue closes the victory screen")
+	# ---- shop from the screen between battles
+	g.shop = g.generate_shop()
+	g.shop_pending = true
+	g.gems = 50
+	g.stats.dealt = 0
+	var ndone := [false]
+	var nrun := func():
+		await hud.intermission(g)
+		ndone[0] = true
+	nrun.call()
+	await process_frame
+	expect(hud.intermission_window.next_b.text == "SHOP", "the last button is SHOP while a shop waits")
+	hud.intermission_window.next_b.pressed.emit()
+	await process_frame
+	var sh = hud.shop_window
+	expect(sh.visible and sh.grid.get_child_count() == 8 and sh.gems_l.text == "Gems: 50", "the shop shows 8 things and your gems")
+	var buy_b = sh.grid.get_child(0).get_child(1)
+	expect(buy_b.text.contains("buy for") and not buy_b.disabled, "each card has a buy button with its price")
+	var dom_n: int = g.collection.size()
+	buy_b.pressed.emit()
+	expect(g.collection.size() == dom_n + 1 and sh.grid.get_child(0).get_child(1).text == "Sold" and g.gems < 50, "buying takes gems and the card shows Sold")
+	g.gems = 0
+	sh._rebuild()
+	expect(sh.grid.get_child(1).get_child(1).disabled, "too expensive: the button is disabled")
+	sh.leave_b.pressed.emit()
+	await process_frame
+	expect(not g.shop_pending and hud.intermission_window.next_b.text == "NEXT BATTLE" and not ndone[0], "after the shop the button says NEXT BATTLE")
+	hud.intermission_window.next_b.pressed.emit()
+	await process_frame
+	expect(ndone[0], "Next battle carries on")
+	# ---- inventory shows the weapon
+	g.stored_weapons.append(Relics.by_id("rapier"))
+	hud.open_inventory(g)
+	var w_btns := []
+	for c in hud.inventory_window.rows.get_children():
+		if c is HBoxContainer:
+			w_btns.append(c.get_child(2))
+	expect(w_btns[0].text == "Equipped" and w_btns[0].disabled and w_btns[1].text == "Equip", "inventory: the weapon in use cannot be unequipped, another one can be equipped")
+	w_btns[1].pressed.emit()
+	expect(g.weapon.title == "Rapier" and g.stored_weapons[0].title == "Short Sword", "equipping a weapon replaces the old one")
+	hud.inventory_window.close()
 	print("CHECKS: ", checks, "  FAILURES: ", fails)
 	quit(fails)

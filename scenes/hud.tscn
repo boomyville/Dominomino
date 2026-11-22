@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Theme" path="res://themes/main_theme.tres" id="theme"]
 [ext_resource type="Script" path="res://scripts/hud.gd" id="hud"]
@@ -11,6 +11,8 @@
 [ext_resource type="PackedScene" path="res://scenes/stack_window.tscn" id="stack"]
 [ext_resource type="PackedScene" path="res://scenes/inventory_window.tscn" id="inventory"]
 [ext_resource type="PackedScene" path="res://scenes/intermission_window.tscn" id="inter"]
+[ext_resource type="PackedScene" path="res://scenes/victory_window.tscn" id="victory"]
+[ext_resource type="PackedScene" path="res://scenes/shop_window.tscn" id="shop"]
 
 [sub_resource type="StyleBoxFlat" id="tray_style"]
 bg_color = Color(1, 1, 1, 1)
@@ -83,6 +85,12 @@ mouse_filter = 2
 horizontal_alignment = 2
 
 [node name="LivesLabel" type="Label" parent="Layout/TopMargin/TopBar/Right"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+horizontal_alignment = 2
+
+[node name="GemsLabel" type="Label" parent="Layout/TopMargin/TopBar/Right"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
@@ -172,6 +180,19 @@ unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(56, 26)
 text = "Stack"
+
+[node name="RestartButton" type="Button" parent="Layout/BottomMargin/BottomBar/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(0, 26)
+text = "Restart battle"
+
+[node name="RewindButton" type="Button" parent="Layout/BottomMargin/BottomBar/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(0, 26)
+visible = false
+text = "Rewind turn (-1 life)"
 
 [node name="ResetButton" type="Button" parent="Layout/BottomMargin/BottomBar/Buttons"]
 unique_name_in_owner = true
@@ -299,6 +320,12 @@ unique_name_in_owner = true
 unique_name_in_owner = true
 
 [node name="InventoryWindow" parent="ModalLayer/Centered" instance=ExtResource("inventory")]
+unique_name_in_owner = true
+
+[node name="VictoryWindow" parent="ModalLayer/Centered" instance=ExtResource("victory")]
+unique_name_in_owner = true
+
+[node name="ShopWindow" parent="ModalLayer/Centered" instance=ExtResource("shop")]
 unique_name_in_owner = true
 
 [node name="FlashRect" type="ColorRect" parent="."]

@@ -7,6 +7,7 @@ extends RefCounted
 ##   turn      at the start of each of your turns, including the first turn of a battle
 ##   turn_end  when you press End turn, before the enemy acts
 ##   play      when you play a domino, before its effects (ctx = {a, b, cost})
+##   victory   when you win a battle (before the rewards)
 ##   passive   never fires: the amount is simply added to a number the game asks about
 ##
 ## Conditions ("if" in the row, "" = always):
@@ -18,12 +19,20 @@ extends RefCounted
 ##   pip            the domino you played has the pip number in "pip"
 ##   double         the domino you played has the same pip on both halves
 ##   lowLives       you have fewer lives than you started with
+##   every3         the battle you just won was the 3rd, 6th, 9th ...
+##   oneLife        you have exactly 1 life
 ##   halfHp         your HP is half or less
 ##
 ## Actions ("do" in the row, "v" is the amount):
 ##   energy  shield  max_shield  draw  fury  power  boost  impair (on the enemy)  heal  damage (to the enemy)
 ##   restack (shuffle v random discarded dominoes back into the stack)  max_hp  life
-## Passive keys: max_energy (energy you get each turn), max_hp (more max HP) and rewards (extra dominoes offered after a battle).
+## Passive keys: max_energy (energy you get each turn), max_hp (more max HP), rewards (extra dominoes offered
+## after a battle), gems (extra gems after a battle), shop_discount (gems off every shop price) and rewind
+## (the Time Pendant: shows the Rewind turn button).
+##
+## A WEAPON is a relic with "weapon": true and no hook. It adds dominoes instead: each entry of "adds" is
+## {t: domino name, n: how many, a, b: pips (-1 = random), when: battle or turn, pos: stack, bottom, top or hand}.
+## You can carry many weapons but have only ONE equipped: it cannot be unequipped, only replaced.
 ## "once": true means it can fire at most once per turn.
 
 var id := ""
@@ -36,6 +45,9 @@ var act := ""
 var amount := 0
 var pip := -1
 var once := false
+var weapon := false
+var starter := false      # you start the run with it: never offered as a reward or sold
+var adds := []
 var _last_key := -1
 
 const RARITY_NAMES := {"c": "Common", "u": "Uncommon", "r": "Rare"}
@@ -46,20 +58,32 @@ func setup(row: Dictionary, icons) -> void:
 	id = icons.slug(title)
 	rarity = row.r
 	text = row.text
-	hook = row.on
 	cond = row.get("if", "")
-	act = row["do"]
 	amount = int(row.get("v", 0))
 	pip = int(row.get("pip", -1))
 	once = bool(row.get("once", false))
+	weapon = bool(row.get("weapon", false))
+	starter = bool(row.get("starter", false))
+	adds = row.get("adds", [])
+	hook = row.get("on", "")
+	act = row.get("do", "")
 
 
 func is_relic() -> bool:
 	return true
 
 
+## Forget "once per turn" memory (after a battle or turn is restarted).
+func reset_runtime() -> void:
+	_last_key = -1
+
+
 func rarity_name() -> String:
 	return RARITY_NAMES[rarity]
+
+
+func kind_name() -> String:
+	return "weapon" if weapon else "artifact"
 
 
 ## The description without :icon: tokens (for tooltips and toasts).
@@ -70,7 +94,7 @@ func plain_text() -> String:
 
 
 func tooltip() -> String:
-	return "%s (%s)\n%s" % [title, rarity_name(), plain_text()]
+	return "%s (%s %s)\n%s" % [title, rarity_name(), kind_name(), plain_text()]
 
 
 ## How much this relic adds to a passive number (0 if it is not a passive for that key).
@@ -118,6 +142,10 @@ func _holds(game, ctx: Dictionary) -> bool:
 			return game.lives < game.START_LIVES
 		"halfHp":
 			return game.pl.hp * 2 <= game.pl.max_hp
+		"every3":
+			return game.battle_no % 3 == 0
+		"oneLife":
+			return game.lives == 1
 	push_error("unknown relic condition: " + cond)
 	return false
 

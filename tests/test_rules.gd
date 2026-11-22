@@ -83,6 +83,7 @@ func find_spot(g: Game, a: int, b: int):
 
 func _initialize() -> void:
 	randomize()
+	Game.starter_gear = false      # these tests want a plain start (no weapon, no pendant)
 	await _tests()
 	print("CHECKS: ", checks, "  FAILURES: ", fails)
 	quit(fails)
@@ -90,14 +91,14 @@ func _initialize() -> void:
 
 func _tests() -> void:
 	# ---------- catalogue ----------
-	expect(Dominoes.TY.size() == 93, "92 dominoes (80 from the web build + 12 new) plus Garbage")
-	var rc := {"c": 0, "u": 0, "r": 0, "g": 0}
+	expect(Dominoes.TY.size() == 103, "102 dominoes (80 from the web build + 22 new) plus Garbage")
+	var rc := {"c": 0, "u": 0, "r": 0, "w": 0, "g": 0}
 	var names := {}
 	for t in Dominoes.TY:
 		rc[t.r] += 1
 		names[t.n] = true
-	expect(rc == {"c": 36, "u": 35, "r": 21, "g": 1}, "rarity counts 36 common / 35 uncommon / 21 rare %s" % rc)
-	expect(names.size() == 93, "all names are unique")
+	expect(rc == {"c": 38, "u": 37, "r": 22, "w": 5, "g": 1}, "rarity counts 38 common / 37 uncommon / 22 rare / 5 weapon %s" % rc)
+	expect(names.size() == 103, "all names are unique")
 	expect(cat[Dominoes.GARBAGE].title == "Garbage" and cat[Dominoes.GARBAGE].is_garbage(), "Garbage is the last entry")
 	# every effect size matches the web build exactly (fixture dumped from index.html)
 	var fixture = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/domino_values.json"))
@@ -359,6 +360,7 @@ func _tests() -> void:
 	var other := 0
 	var counts := {1: 0, 2: 0}
 	for i in 3000:
+		g.bat.turn = i + 1            # the plan depends on the seed, the battle and the turn
 		g.new_intent()
 		counts[g.foe.intent.size()] += 1
 		for it in g.foe.intent:

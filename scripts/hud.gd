@@ -13,6 +13,8 @@ signal end_turn_pressed
 signal ok_pressed
 signal cancel_pressed
 signal new_game_pressed
+signal restart_battle_pressed
+signal rewind_turn_pressed
 signal domino_tapped(view)
 signal domino_drag_started(view)
 signal domino_drag_moved(view, pos)
@@ -30,6 +32,11 @@ const IDLE_RESET_MS := 10000
 @onready var hint_l: Label = %HintLabel
 @onready var energy_l: Label = %EnergyLabel
 @onready var lives_l: Label = %LivesLabel
+@onready var gems_l: Label = %GemsLabel
+@onready var restart_b: Button = %RestartButton
+@onready var rewind_b: Button = %RewindButton
+@onready var victory_window = %VictoryWindow
+@onready var shop_window = %ShopWindow
 @onready var stats_l: Label = %StatsLabel
 @onready var info_window = %InfoWindow
 @onready var settings_b: Button = %SettingsButton
@@ -72,6 +79,10 @@ var _last_st := {}
 func _ready() -> void:
 	Settings.load_settings()
 	settings_b.pressed.connect(open_settings)
+	restart_b.pressed.connect(func(): restart_battle_pressed.emit())
+	rewind_b.pressed.connect(func(): rewind_turn_pressed.emit())
+	shop_window.closed.connect(_on_shop_closed)
+	intermission_window.shop_pressed.connect(func(): open_shop(_game))
 	stack_b.pressed.connect(func(): open_stack(_game, true))
 	settings_window.changed.connect(_on_settings_changed)
 	for w in [settings_window, stack_window, inventory_window]:
@@ -95,6 +106,10 @@ func refresh(game, st: Dictionary) -> void:
 	_pending = st.pending
 	energy_l.text = "Energy %d" % game.energy
 	lives_l.text = "Lives x%d" % game.lives
+	gems_l.text = "Gems %d" % game.gems
+	restart_b.disabled = game.busy != 0 and not game.ended
+	rewind_b.visible = game.has_rewind()
+	rewind_b.disabled = not game.can_rewind_turn() or st.pending
 	var s: Dictionary = game.stats
 	stats_l.text = "Played %d\nEnergy wasted %d\nBattle %d, turn %d\nStack %d / Discard %d" % [
 			s.played, s.wasted, game.battle_no, game.bat.turn, game.stack.size(), game.discard.size()]
@@ -147,14 +162,17 @@ func _sync_tray(game, st: Dictionary) -> void:
 
 ## The relic icons in the top right corner (hover for the text, tap to see it).
 func _sync_relics(game) -> void:
-	var ids: Array = game.relic_ids()
+	var shown: Array = ([game.weapon] if game.weapon != null else []) + game.relics
+	var ids := []
+	for r in shown:
+		ids.append(r.id)
 	if ids == _relic_ids:
 		return
 	_relic_ids = ids
 	for c in relic_bar.get_children():
 		relic_bar.remove_child(c)
 		c.queue_free()
-	for r in game.relics:
+	for r in shown:
 		var icon := TextureRect.new()
 		icon.texture = Icons.relic_texture(r)
 		icon.custom_minimum_size = Vector2(Icons.RELIC_SIZE, Icons.RELIC_SIZE)
@@ -251,7 +269,30 @@ func pick(game, title: String, sub: String, list: Array, skip: String = "") -> i
 ## ---- modal windows ------------------------------------------------------
 
 func open_settings() -> void:
-	settings_window.open()
+	settings_window.open(_game)
+	_sync_modal()
+
+
+func open_shop(game) -> void:
+	if game == null:
+		return
+	shop_window.open(game)
+	_sync_modal()
+
+
+func _on_shop_closed() -> void:
+	if _game != null:
+		_game.shop_pending = false         # you have been to the shop: now it is Next battle
+		intermission_window.show_stats(_game)
+	_sync_modal()
+
+
+## The victory screen (damage dealt, HP lost, gems). Waits for Continue.
+func victory(game, summary: Dictionary) -> void:
+	_game = game
+	victory_window.ask(game, summary)
+	_sync_modal()
+	await victory_window.continue_pressed
 	_sync_modal()
 
 
@@ -281,7 +322,8 @@ func intermission(game) -> void:
 
 ## The modal layer is only there (and only blocks the game under it) while a window is open.
 func _sync_modal() -> void:
-	var any: bool = settings_window.visible or stack_window.visible or inventory_window.visible or intermission_window.visible
+	var any: bool = settings_window.visible or stack_window.visible or inventory_window.visible \
+			or intermission_window.visible or victory_window.visible or shop_window.visible
 	modal_layer.visible = any
 	dim.visible = not intermission_window.visible
 

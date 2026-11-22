@@ -107,6 +107,24 @@ func status_entries() -> Array:
 	return out
 
 
+## Everything about this combatant as plain data, and the way back (for restarting a turn).
+func get_state() -> Dictionary:
+	var st := {}
+	for id in statuses:
+		st[id] = statuses[id].value
+	return {"hp": hp, "max_hp": max_hp, "shield": shield, "max_shield": max_shield, "statuses": st}
+
+
+func set_state(s: Dictionary) -> void:
+	hp = s.hp
+	max_hp = s.max_hp
+	shield = s.shield
+	max_shield = s.max_shield
+	statuses.clear()
+	for id in s.statuses:
+		add(id, s.statuses[id])
+
+
 ## A plain Combatant with the same HP, shield and statuses, for working out "what would happen"
 ## (the damage previews) without touching the real one.
 func snapshot():

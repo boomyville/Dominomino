@@ -26,6 +26,11 @@ func pick(title: String, _sub: String, _list: Array, _skip: String = "") -> int:
 	return 0
 
 
+## The victory screen (damage dealt, HP lost, gems). Here it is skipped at once.
+func victory(_game, _summary: Dictionary) -> void:
+	log.append("victory")
+
+
 ## The screen between battles. Here it is skipped at once.
 func intermission(_game) -> void:
 	log.append("intermission")

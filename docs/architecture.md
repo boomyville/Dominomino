@@ -103,3 +103,22 @@ while any is open. `settings.gd` holds the options (saved to user://settings.cfg
 status names, show status info cards. `glossary.gd` has the text of those cards; `domino_info.gd` is the info panel
 (used by the HUD and the stack window). The stack window lists `game.battle_deck_entries()` (or `collection_entries()`
 between battles): not drawn = full, in hand = bordered and faded, drawn = faded more.
+
+## Seed, restart and rewind
+`game.seed_value` is set when a game starts (shown read-only in Settings). All game randomness goes through `game.rng`;
+`start_battle()` reseeds it from the seed and the battle number, and the enemy plan of each turn comes only from
+(seed, battle, turn). So **Restart battle** (`restart_battle()`) gives the same stack order, hand and plans, with HP,
+lives and stats from the start of the battle. The **Time Pendant** (artifact, `rewind` passive) shows the Rewind turn
+button: `snapshot_turn()` saves the turn start (piles, board, fighters, energy, random state) and `restart_turn()` puts it
+back for 1 life (not with 1 life left).
+
+## Weapons and ephemeral dominoes
+A weapon is a relic with `weapon: true` (table `Relics.WEAPONS`); `game.weapon` holds the one equipped (own slot,
+never unequipped, only replaced; spares sit in `game.stored_weapons`). Its `adds` list puts dominoes into the stack
+(`pos`: stack, bottom, top) at battle start or into your hand each turn. Weapon dominoes have rarity `w` (never offered
+elsewhere). A domino row with `"e": true` is ephemeral: unplayed copies go to the discard pile at end of turn.
+
+## Gems, victory and the shop
+Start with 9 gems; a win gives 2-3 (+ Jeweler's Loupe). Order after a win: victory screen (`victory_window.gd`) -> reward
+-> screen between battles. After battle 1 (always) and otherwise 30% (`SHOP_CHANCE`) the last button is SHOP: 5 dominoes
+(one rare), 2 artifacts, 1 weapon (`generate_shop()`), prices: domino c 2-3 / u 4-5 / r 6-8, artifacts x2, weapons x1.5.

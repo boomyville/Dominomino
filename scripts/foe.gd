@@ -13,3 +13,14 @@ func _init(level: int = 1) -> void:
 	super(hit_points)
 	lv = level
 	title = NAMES[level - 1] if level <= NAMES.size() else "Hare Lord %d" % level
+
+
+func get_state() -> Dictionary:
+	var st := super()
+	st["intent"] = intent.duplicate(true)
+	return st
+
+
+func set_state(s: Dictionary) -> void:
+	super(s)
+	intent = s.intent.duplicate(true)

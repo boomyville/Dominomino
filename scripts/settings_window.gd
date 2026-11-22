@@ -14,6 +14,7 @@ const LABELS := {
 
 @onready var list: VBoxContainer = %Options
 @onready var close_b: Button = %Close
+@onready var seed_edit: LineEdit = %Seed
 
 var _buttons := {}
 
@@ -31,7 +32,8 @@ func _ready() -> void:
 	close_b.pressed.connect(close)
 
 
-func open() -> void:
+func open(game = null) -> void:
+	seed_edit.text = str(game.seed_value) if game != null else ""
 	for key in _buttons:
 		_buttons[key].set_pressed_no_signal(Settings.get_value(key))
 		_update_text(key)
