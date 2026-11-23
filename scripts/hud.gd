@@ -5,6 +5,7 @@ extends Control
 ##   tray         the hand: one DominoView per domino
 ##   tags         HP / shield / status / intent over each character
 ##   floats       numbers that float up and fade
+##   fly layer    dominoes flying into the hand (draw, added) or off the screen (discard)
 ##   windows      pick window and game over window
 ##   modal layer  settings, domino stack, inventory and the screen between battles (blocks the game below)
 ## main.gd tells it what to show with refresh(); it tells main.gd what the player did with signals.
@@ -26,6 +27,9 @@ const FloatingText = preload("res://scripts/floating_text.gd")
 const DominoText = preload("res://scripts/domino_text.gd")
 const Icons = preload("res://scripts/icons.gd")
 const Settings = preload("res://scripts/settings.gd")
+const FlyingDomino = preload("res://scripts/flying_domino.gd")
+const FLIGHT_SEC := 0.5        # one flight at medium speed (the setting scales it)
+const STAGGER_SEC := 0.08      # dominoes that arrive together leave this far apart
 const TAG_FADE := 0.3          # tags are this opaque while a domino is selected
 const IDLE_RESET_MS := 10000
 
@@ -41,6 +45,8 @@ const IDLE_RESET_MS := 10000
 @onready var info_window = %InfoWindow
 @onready var settings_b: Button = %SettingsButton
 @onready var stack_b: Button = %StackButton
+@onready var discard_b: Button = %DiscardButton
+@onready var fly_layer: Control = %FlyLayer
 @onready var modal_layer: Control = %ModalLayer
 @onready var dim: ColorRect = %Dim
 @onready var settings_window = %SettingsWindow
@@ -74,6 +80,9 @@ var _game = null
 var _pending := false
 var _relic_ids := []
 var _last_st := {}
+var _entering: Array = []            # [{d, from}] dominoes that just went into the hand, waiting for refresh()
+var _anim_locked := {}               # Domino -> true while its flying copy is arriving (its slot is locked)
+var _flying := {}                    # Domino -> its FlyingDomino
 
 
 func _ready() -> void:
@@ -84,6 +93,7 @@ func _ready() -> void:
 	shop_window.closed.connect(_on_shop_closed)
 	intermission_window.shop_pressed.connect(func(): open_shop(_game))
 	stack_b.pressed.connect(func(): open_stack(_game, true))
+	discard_b.pressed.connect(func(): open_discard(_game))
 	settings_window.changed.connect(_on_settings_changed)
 	for w in [settings_window, stack_window, inventory_window]:
 		w.closed.connect(_sync_modal)
@@ -111,8 +121,10 @@ func refresh(game, st: Dictionary) -> void:
 	rewind_b.visible = game.has_rewind()
 	rewind_b.disabled = not game.can_rewind_turn() or st.pending
 	var s: Dictionary = game.stats
-	stats_l.text = "Played %d\nEnergy wasted %d\nBattle %d, turn %d\nStack %d / Discard %d" % [
-			s.played, s.wasted, game.battle_no, game.history.turn, game.stack.size(), game.discard.size()]
+	stats_l.text = "Played %d\nEnergy wasted %d\nBattle %d, turn %d" % [
+			s.played, s.wasted, game.battle_no, game.history.turn]
+	stack_b.text = "Stack %d" % game.stack.size()
+	discard_b.text = "Discard %d" % game.discard.size()
 	if game.busy == 2:
 		hint_l.text = "Resolving effects"
 	elif game.busy == 3:
@@ -154,10 +166,123 @@ func _sync_tray(game, st: Dictionary) -> void:
 		var gone = views.pop_back()
 		hand_box.remove_child(gone)
 		gone.queue_free()
+	_start_entries(game)
 	for i in game.hand.size():
-		var can: bool = game.busy == 0 and not game.ended and not st.pending and game.can_play(i)
+		var locked: bool = _anim_locked.has(game.hand[i])
+		var can: bool = game.busy == 0 and not game.ended and not st.pending and not locked and game.can_play(i)
 		var hide_it: bool = i == st.drag_index or i == st.pending_index
-		views[i].update_view(game.hand[i], i, i == st.sel, can, game.caps(i), hide_it)
+		views[i].update_view(game.hand[i], i, i == st.sel and not locked, can, game.caps(i), hide_it, locked)
+
+
+# ---- dominoes flying in and out -------------------------------------------
+
+## game.gd says a domino went into the hand (source "stack" or "top"). It starts flying at the next
+## refresh(), when its slot in the tray exists.
+func queue_entry(d, source: String) -> void:
+	_entering.append({"d": d, "from": source})
+
+
+## Start a flight for every queued domino whose slot exists. Its slot is locked until it lands.
+func _start_entries(game) -> void:
+	var scale := Settings.speed_scale()
+	var n := 0
+	for e in _entering:
+		var i: int = game.hand.find(e.d)
+		if i < 0 or i >= views.size() or scale <= 0.0:
+			continue
+		_launch_arrival(e.d, e.from, n * STAGGER_SEC * scale, scale)
+		n += 1
+	_entering.clear()
+
+
+func _launch_arrival(d, source: String, delay: float, scale: float) -> void:
+	var f = FlyingDomino.new()
+	f.setup(d, dot_tex)
+	fly_layer.add_child(f)
+	_anim_locked[d] = true
+	_flying[d] = f
+	var from_fn: Callable
+	var arc := 56.0
+	var dur := FLIGHT_SEC
+	if source == "stack":
+		from_fn = func(): return _center_of(stack_b)
+	else:
+		# from above the screen, a little to one side of the slot
+		var side := randf_range(-70.0, 70.0)
+		from_fn = func(): return Vector2(_center_of(tray).x + side, -40.0)
+		arc = 24.0
+		dur = FLIGHT_SEC * 1.3
+	f.arrive(from_fn, _slot_center.bind(d), dur * scale, delay, arc)
+	f.finished.connect(_on_flyer_finished.bind(d))
+
+
+func _center_of(c: Control) -> Vector2:
+	return c.get_global_rect().get_center()
+
+
+## The view that shows this domino (as of the last refresh), or null.
+func view_for(d):
+	for v in views:
+		if v.domino == d:
+			return v
+	return null
+
+
+## Where the domino's flat picture sits in its slot (the flyer lands there), or null if it has no slot.
+func _slot_center(d):
+	var v = view_for(d)
+	if v == null or not v.is_inside_tree():
+		return null
+	return v.global_position + Vector2(v.size.x / 2.0, 30.0)
+
+
+func _on_flyer_finished(_landed: bool, d) -> void:
+	_anim_locked.erase(d)
+	_flying.erase(d)
+	var v = view_for(d)
+	if v != null:
+		v.set_locked(false)
+
+
+## A domino was discarded: it flies off the screen. Its slot disappears at the next refresh().
+func fling(d) -> void:
+	var scale := Settings.speed_scale()
+	var vp := get_viewport_rect().size
+	var v = view_for(d)
+	if v != null:
+		v.set_locked(true)
+	if scale <= 0.0:
+		if _flying.has(d):
+			_flying[d].queue_free()
+			_on_flyer_finished(false, d)
+		return
+	var from := _center_of(tray)
+	if v != null:
+		from = v.global_position + Vector2(v.size.x / 2.0, 30.0)
+	var dir := 1.0 if from.x >= vp.x / 2.0 else -1.0
+	var to := Vector2(vp.x / 2.0 + dir * vp.x * 0.75, -140.0)
+	var f
+	if _flying.has(d):
+		f = _flying[d]            # it never landed: send it away from where it is now
+		f.finished.disconnect(_on_flyer_finished.bind(d))
+		_flying.erase(d)
+		_anim_locked.erase(d)
+	else:
+		f = FlyingDomino.new()
+		f.setup(d, dot_tex)
+		fly_layer.add_child(f)
+	f.fling(from, to, FLIGHT_SEC * 1.1 * scale, 70.0, dir * TAU * 1.2)
+
+
+## Stop every flight (new game, rewind): the dominoes just appear where they belong.
+func cancel_animations() -> void:
+	for c in fly_layer.get_children():
+		c.queue_free()
+	_anim_locked.clear()
+	_flying.clear()
+	_entering.clear()
+	for v in views:
+		v.set_locked(false)
 
 
 ## The relic icons in the top right corner (hover for the text, tap to see it).
@@ -301,6 +426,14 @@ func open_stack(game, in_battle: bool) -> void:
 	if game == null:
 		return
 	stack_window.open(game, in_battle)
+	_sync_modal()
+
+
+## The discard pile, nothing else (the latest discarded first).
+func open_discard(game) -> void:
+	if game == null:
+		return
+	stack_window.open_discard(game)
 	_sync_modal()
 
 

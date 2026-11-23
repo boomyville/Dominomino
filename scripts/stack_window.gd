@@ -3,6 +3,7 @@ extends PanelContainer
 ## In battle (game.battle_deck_entries): dominoes not drawn yet are fully visible, dominoes in your
 ## hand are faded with a border, dominoes already drawn (played or discarded) are faded more.
 ## Between battles (game.collection_entries) everything is fully visible.
+## open_discard() shows only the discard pile (the latest discarded first).
 
 signal closed
 
@@ -26,11 +27,26 @@ func _ready() -> void:
 
 ## in_battle false = between battles: the whole collection at full opacity.
 func open(game, in_battle: bool) -> void:
-	_game = game
 	var entries: Array = game.battle_deck_entries() if in_battle else game.collection_entries()
-	title_l.text = "DOMINO STACK (%d)" % entries.size()
-	legend_l.text = "Full: still in the stack.  Bordered: in your hand.  Faded: already drawn." if in_battle \
-			else "Every domino you own."
+	_show(game, entries, "DOMINO STACK (%d)" % entries.size(),
+			"Full: still in the stack.  Bordered: in your hand.  Faded: already drawn." if in_battle \
+			else "Every domino you own.")
+
+
+## Only the dominoes in the discard pile, the latest first, at full opacity.
+func open_discard(game) -> void:
+	var entries := []
+	for i in range(game.discard.size() - 1, -1, -1):
+		entries.append({"d": game.discard[i], "state": "stack"})
+	_show(game, entries, "DISCARD PILE (%d)" % entries.size(),
+			"Dominoes you discarded this battle, the latest first." if not entries.is_empty() \
+			else "No dominoes in the discard pile.")
+
+
+func _show(game, entries: Array, title: String, legend: String) -> void:
+	_game = game
+	title_l.text = title
+	legend_l.text = legend
 	legend_l.visible = true
 	for c in grid.get_children():
 		grid.remove_child(c)

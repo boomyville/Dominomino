@@ -56,6 +56,26 @@ Extend `model.gd` (or `status.gd`), override a hook, and add it to the list `act
 override a `modify_damage_*` hook. To react to something that has no hook yet, add the hook to `model.gd` and
 `HOOKS`, then call `game.emit(type, "your_hook", data)` where it happens.
 
+## Animations
+Game never knows about animations. It tells the ui object two things (main.gd forwards them to hud.gd; NullUI just
+records them in tests):
+- `card_entered(domino, source)` when a domino goes into the hand. `source` is `"stack"` (drawn, or found in the draw
+  pile: it flies from the Stack button) or `"top"` (made by an effect or added by a weapon: it flies in from the top of
+  the screen). Every entry goes through `Game._enter_hand`. An effect that makes a domino calls `game.add_to_hand(d)`.
+- `card_discarded(domino)` when a domino leaves the hand for the discard pile (a discard effect, or an ephemeral
+  domino at the end of the turn): it is flung off the screen.
+
+hud.gd turns these into `FlyingDomino` nodes (`scripts/flying_domino.gd`, on the fly layer). An arriving domino's
+slot in the tray exists at once but is **locked** (`DominoView.locked`): it draws nothing and ignores the mouse until
+the flyer lands, so it cannot be selected or dragged. The flyer asks for its slot's position every frame, so it still
+lands right when the hand re-centres. Dominoes drawn together leave the pile one after the other. A domino discarded
+while it is still flying in is flung from where it is. New game, restart and rewind cancel every flight.
+
+The **Discard** button next to Stack opens the stack window with only the discard pile (`StackWindow.open_discard`).
+**Animation speed** (Settings window: Slow, Medium, Fast, Instant) is `Settings.anim_speed`, saved with the other
+options. `Settings.speed_scale()` scales the flights and every wait in `main.pause()`. Medium is the original pacing and
+Instant skips flying and waiting. To animate something new, use `Settings.speed_scale()` (0 means do not animate).
+
 ## The screen
 Everything except the board is a scene made of containers, styled by one theme (`themes/main_theme.tres`):
 
@@ -123,6 +143,7 @@ Both feed the tags in `hud.update_tags`. A new effect that changes damage should
 godot --headless -s tests/test_features.gd   # relics, new dominoes, previews, icons
 godot --headless -s tests/test_ui.gd         # tags, previews on the bars, relic bar and cards
 godot --headless -s tests/test_architecture.gd   # hook order, damage passes, history, commands, no direct writes
+godot --headless -s tests/test_animation.gd      # flying dominoes and locks, discard pile, speed setting
 ```
 
 ## Rewards, healing and the screen between battles

@@ -13,6 +13,12 @@ static var show_status_info := false
 
 const KEYS := ["show_damage_taken", "show_status_names", "show_status_info"]
 
+## Animation speed: how long dominoes take to fly (draw, discard, added to hand) and how long the game
+## waits between steps. "medium" is the original pacing, "instant" skips the flying and the waiting.
+const SPEEDS := {"slow": 1.75, "medium": 1.0, "fast": 0.5, "instant": 0.0}
+const SPEED_ORDER := ["slow", "medium", "fast", "instant"]
+static var anim_speed := "medium"
+
 
 static func get_value(key: String) -> bool:
 	match key:
@@ -38,16 +44,31 @@ static func set_value(key: String, value: bool) -> void:
 			push_error("unknown setting: " + key)
 
 
+## 1.0 = the original pacing, bigger = slower, 0 = instant.
+static func speed_scale() -> float:
+	return SPEEDS[anim_speed]
+
+
+## Change the animation speed and save it. An unknown id is ignored.
+static func set_speed(id: String) -> void:
+	if SPEEDS.has(id):
+		anim_speed = id
+		save()
+
+
 static func load_settings() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(PATH) != OK:
 		return
 	for k in KEYS:
 		set_value(k, bool(cfg.get_value("options", k, get_value(k))))
+	var id := str(cfg.get_value("options", "anim_speed", "medium"))
+	anim_speed = id if SPEEDS.has(id) else "medium"
 
 
 static func save() -> void:
 	var cfg := ConfigFile.new()
 	for k in KEYS:
 		cfg.set_value("options", k, get_value(k))
+	cfg.set_value("options", "anim_speed", anim_speed)
 	cfg.save(PATH)

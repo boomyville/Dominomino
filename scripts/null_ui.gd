@@ -7,6 +7,8 @@ var log: Array = []      # every float / toast / flash is recorded here so tests
 var flashes := 0
 var swings: Array = []
 var finished_count := 0
+var entered: Array = []      # [{card, source}] every domino that went into the hand ("stack" or "top")
+var discarded: Array = []    # every domino discarded from the hand
 
 
 func refresh() -> void:
@@ -58,6 +60,17 @@ func swing(who: String) -> void:
 
 func fresh(_index: int) -> void:
 	pass
+
+
+## A domino went into the hand. source: "stack" (drawn or found in the draw pile) or "top" (made by
+## an effect or a weapon). The real UI flies it in.
+func card_entered(card, source: String) -> void:
+	entered.append({"card": card, "source": source})
+
+
+## A domino was discarded from the hand. The real UI flings it off the screen.
+func card_discarded(card) -> void:
+	discarded.append(card)
 
 
 func note_play() -> void:

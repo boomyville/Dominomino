@@ -11,6 +11,7 @@ extends Node2D
 const Game = preload("res://scripts/game.gd")
 const DominoArt = preload("res://scripts/domino_art.gd")
 const HudScene = preload("res://scenes/hud.tscn")
+const Settings = preload("res://scripts/settings.gd")
 
 const VIEW := Vector2(960, 540)
 const ORIGIN := Vector2(480, 56)   # top vertex of the board diamond
@@ -68,6 +69,8 @@ func _ready() -> void:
 	hud.domino_drag_moved.connect(_on_drag_moved)
 	hud.domino_drag_released.connect(_on_drag_released)
 	hud.domino_rotate_requested.connect(_on_rotate_requested)
+	for d in game.hand:      # the first hand flies in too
+		hud.queue_entry(d, "stack")
 	_refresh_ui()
 	game.stuck_check()
 
@@ -86,8 +89,13 @@ func refresh() -> void:
 	_refresh_ui()
 
 
+## The animation speed setting scales every wait (medium = as written, instant = just a frame).
 func pause(sec: float) -> void:
-	await get_tree().create_timer(sec * time_scale).timeout
+	var t := sec * time_scale * Settings.speed_scale()
+	if t <= 0.0:
+		await get_tree().process_frame
+	else:
+		await get_tree().create_timer(t).timeout
 
 
 ## Show the dominoes in list and wait until one is chosen. Returns its index, or -1 for skip.
@@ -134,6 +142,16 @@ func swing(who: String) -> void:
 
 func fresh(_index: int) -> void:
 	pass
+
+
+## A domino went into the hand: it flies in from the Stack button ("stack") or the top of the screen.
+func card_entered(d, source: String) -> void:
+	hud.queue_entry(d, source)
+
+
+## A domino was discarded: it is flung off the screen.
+func card_discarded(d) -> void:
+	hud.fling(d)
 
 
 func note_play() -> void:
@@ -213,6 +231,7 @@ func _on_end_pressed() -> void:
 
 
 func _on_new_game() -> void:
+	hud.cancel_animations()
 	game.new_game()
 	sel = -1
 	drag = null
@@ -226,6 +245,7 @@ func _on_new_game() -> void:
 
 ## Forget any half-made move (selection, drag, placed-but-not-confirmed domino).
 func _clear_input() -> void:
+	hud.cancel_animations()
 	sel = -1
 	drag = null
 	pending = null

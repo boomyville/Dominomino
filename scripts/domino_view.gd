@@ -6,6 +6,7 @@ extends Control
 ##   drag_moved      while dragging (global position)
 ##   drag_released   the drag ended (global position)
 ##   rotate_requested  right-click while dragging
+## While locked (the domino is still flying into the hand) it draws nothing and ignores the mouse.
 ## Godot keeps sending mouse events to this control until the button is released, so it can follow a
 ## drag all the way onto the board.
 
@@ -25,6 +26,7 @@ var index := 0                 # its position in the hand
 var selected := false          # drawn black
 var playable := false          # blinking ring
 var chips: Array = []          # effect icons + numbers, from game.caps()
+var locked := false            # a flying copy is on its way (or away): draw nothing, take no input
 var hidden_in_drag := false    # draws nothing while it is being dragged, but still gets the mouse events
 var dot_tex: Texture2D = null
 
@@ -39,8 +41,9 @@ func _ready() -> void:
 	set_process(false)
 
 
-func update_view(d, i: int, is_selected: bool, can_play: bool, new_chips: Array, hide_it: bool) -> void:
+func update_view(d, i: int, is_selected: bool, can_play: bool, new_chips: Array, hide_it: bool, is_locked: bool = false) -> void:
 	domino = d
+	locked = is_locked
 	index = i
 	selected = is_selected
 	playable = can_play
@@ -54,7 +57,17 @@ func _process(_delta: float) -> void:
 	queue_redraw()
 
 
+## Hide the domino while its flying copy is on screen; a locked domino cannot be selected or dragged.
+func set_locked(value: bool) -> void:
+	locked = value
+	_pressing = false
+	_dragging = false
+	queue_redraw()
+
+
 func _gui_input(event: InputEvent) -> void:
+	if locked:
+		return
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
@@ -82,7 +95,7 @@ func _gui_input(event: InputEvent) -> void:
 
 
 func _draw() -> void:
-	if domino == null or hidden_in_drag:
+	if domino == null or hidden_in_drag or locked:
 		return
 	var c := Vector2(size.x / 2.0, 30.0)
 	DominoArt.draw_flat(self, c, domino.ang, domino.a, domino.b, selected, dot_tex)

@@ -210,11 +210,29 @@ func draw_one() -> bool:
 	if stack.is_empty():
 		return false
 	var d = stack.pop_back()
+	_enter_hand(d, "stack")
+	stats.drawn += 1
+	emit("card_drawn", "after_card_drawn", {"title": d.data.title}, {"card": d})
+	return true
+
+
+## The one way a domino gets into the hand. source says where the UI shows it coming from:
+## "stack" (the Stack button) or "top" (the top of the screen).
+func _enter_hand(d, source: String) -> void:
 	d.ang = 0
 	hand.append(d)
-	stats.drawn += 1
 	_cache.clear()
-	emit("card_drawn", "after_card_drawn", {"title": d.data.title}, {"card": d})
+	ui.card_entered(d, source)
+
+
+## Put a domino that was made by an effect straight into your hand (nothing happens if the hand is
+## full: returns false). In the UI it flies in from the top of the screen unless source says "stack".
+func add_to_hand(d, source: String = "top") -> bool:
+	if hand.size() >= MAXH:
+		ui.hand_full()
+		return false
+	_enter_hand(d, source)
+	history.add("card_added", {"title": d.data.title, "source": source})
 	return true
 
 
@@ -256,7 +274,7 @@ func _weapon_turn() -> void:
 		if hand.size() >= MAXH:
 			ui.hand_full()
 			continue
-		hand.append(w.d)
+		_enter_hand(w.d, "top")
 		battle_deck.append(w.d)
 		announce_new_card()
 
@@ -268,6 +286,7 @@ func _discard_ephemeral() -> void:
 			hand.erase(d)
 			discard.append(d)
 			history.add("card_discarded", {"title": d.data.title})
+			ui.card_discarded(d)
 
 
 ## Tell the UI which card was just added to the hand. Kept as its own function because arithmetic
@@ -284,6 +303,7 @@ func discard_random_from_hand() -> bool:
 	discard.append(d)
 	history.add("card_discarded", {"title": d.data.title})
 	_cache.clear()
+	ui.card_discarded(d)
 	return true
 
 
@@ -292,6 +312,7 @@ func discard_hand_card(index: int) -> void:
 	discard.append(d)
 	history.add("card_discarded", {"title": d.data.title})
 	_cache.clear()
+	ui.card_discarded(d)
 	ui.refresh()
 
 
@@ -327,8 +348,7 @@ func stack_order_by_title() -> Array:
 ## Move the chosen domino (position c in the sorted list) from the stack into the hand.
 func tutor_take(order: Array, c: int) -> void:
 	var got = stack.pop_at(order[maxi(c, 0)])
-	got.ang = 0
-	hand.append(got)
+	_enter_hand(got, "stack")
 	announce_new_card()
 	ui.refresh()
 	await ui.pause(0.3)
