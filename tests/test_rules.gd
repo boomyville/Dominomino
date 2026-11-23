@@ -45,6 +45,13 @@ func dom(name: String, a: int, b: int):
 	return Domino.new(cat[ti(name)], a, b)
 
 
+## Make the combat history say that n dominoes have been played this battle.
+func set_played(g: Game, n: int) -> void:
+	g.history.clear()
+	for i in n:
+		g.history.add("domino_played", {"a": 0, "b": 0, "cost": 0, "attack": false})
+
+
 func garb():
 	return Domino.new(cat[Dominoes.GARBAGE], 0, 0)
 
@@ -256,11 +263,11 @@ func _tests() -> void:
 			"pl.sh":
 				g.pl.shield = c[2]
 			"bat":
-				g.bat.hp_lost = true
+				g.history.add("hp_lost", {"who": "p", "amount": 1, "kind": "attack"})
 			"turn":
 				g.played_this_turn = true
 			"played":
-				g.bat.played = c[2]
+				set_played(g, c[2])
 			"hp":
 				g.pl.hp = c[2]
 			"fsh":
@@ -270,11 +277,11 @@ func _tests() -> void:
 			"pl.sh":
 				g.pl.shield = c[3]
 			"bat":
-				g.bat.hp_lost = false
+				g.history.clear()
 			"turn":
 				g.played_this_turn = false
 			"played":
-				g.bat.played = c[3]
+				set_played(g, c[3])
 			"hp":
 				g.pl.hp = c[3]
 			"fsh":
@@ -360,7 +367,7 @@ func _tests() -> void:
 	var other := 0
 	var counts := {1: 0, 2: 0}
 	for i in 3000:
-		g.bat.turn = i + 1            # the plan depends on the seed, the battle and the turn
+		g.history.turn = i + 1            # the plan depends on the seed, the battle and the turn
 		g.new_intent()
 		counts[g.foe.intent.size()] += 1
 		for it in g.foe.intent:
@@ -375,7 +382,7 @@ func _tests() -> void:
 	g = Game.new(); g.played_this_turn = true; g.hand.resize(3); g.foe.intent = [{"k": "atk", "v": 6}, {"k": "atk", "v": 4}]
 	await g.end_turn()
 	expect(g.stats.cpu == 2 and g.pl.hp == 40, "two planned attacks: two enemy dominoes placed, 6 + 4 damage")
-	expect(g.hand.size() == 7 and g.energy == 10 and g.bat.turn == 2, "end of turn: 4 drawn, energy refilled, turn counter up")
+	expect(g.hand.size() == 7 and g.energy == 10 and g.history.turn == 2, "end of turn: 4 drawn, energy refilled, turn counter up")
 
 	# ---------- lives and being stuck ----------
 	g = Game.new(); g.foe.intent = [{"k": "blk", "v": 3}]

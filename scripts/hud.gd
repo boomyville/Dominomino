@@ -112,7 +112,7 @@ func refresh(game, st: Dictionary) -> void:
 	rewind_b.disabled = not game.can_rewind_turn() or st.pending
 	var s: Dictionary = game.stats
 	stats_l.text = "Played %d\nEnergy wasted %d\nBattle %d, turn %d\nStack %d / Discard %d" % [
-			s.played, s.wasted, game.battle_no, game.bat.turn, game.stack.size(), game.discard.size()]
+			s.played, s.wasted, game.battle_no, game.history.turn, game.stack.size(), game.discard.size()]
 	if game.busy == 2:
 		hint_l.text = "Resolving effects"
 	elif game.busy == 3:

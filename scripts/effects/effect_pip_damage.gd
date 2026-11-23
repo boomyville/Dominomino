@@ -51,11 +51,11 @@ func text_for(game, domino, s: int) -> String:
 	var n := count(game, domino)
 	var place := "on the board" if where == "board" else "in your hand"
 	return "Deal %d damage: %d per :%s: pip %s (%d now)" % [
-			game.pl.attack_damage(value(s) * n), value(s), Elements.icon(pip), place, n]
+			attack_value(game, value(s) * n), value(s), Elements.icon(pip), place, n]
 
 
 func caption_for(game, domino, s: int) -> String:
-	return str(game.pl.attack_damage(amount(game, domino, s)))
+	return str(attack_value(game, amount(game, domino, s)))
 
 
 func text(game, s: int) -> String:
@@ -67,8 +67,8 @@ func caption(game, s: int) -> String:
 
 
 func apply(game, domino, s: int) -> void:
-	game.hit_foe(game.pl.attack_damage(amount(game, domino, s, true)))
+	attack(game, amount(game, domino, s, true))
 
 
 func preview(game, domino, s: int, sim: Dictionary) -> void:
-	sim.foe.take_damage(sim.pl.attack_damage(amount(game, domino, s)))
+	sim_attack(game, sim, amount(game, domino, s))

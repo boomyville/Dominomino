@@ -6,6 +6,10 @@ extends RefCounted
 ##   S = s*a + b      C = ceil(s/a) + b      F = floor(s/a) + b
 ##   K = b (constant) L = max(1, round(a*s + b))      N = the effect has no number
 
+const DamageCmd = preload("res://scripts/cmd/damage_cmd.gd")
+const PowerCmd = preload("res://scripts/cmd/power_cmd.gd")
+const CreatureCmd = preload("res://scripts/cmd/creature_cmd.gd")
+
 var kind := ""       # data id, also the icon id in icons.gd
 var mode := "N"
 var a := 0.0
@@ -70,9 +74,25 @@ func caption_for(game, _domino, s: int) -> String:
 	return caption(game, s)
 
 
+## The damage an attack of this base size would deal right now (for text, captions, previews).
+func attack_value(game, base: int) -> int:
+	return DamageCmd.attack_value(game, game.pl, game.foe, base)
+
+
+## Deal damage from you to the enemy through DamageCmd (modifiers, log, stats and UI included).
+func attack(game, base: int) -> void:
+	DamageCmd.attack(game, game.pl, game.foe, base)
+
+
+## The same hit on the copies in sim ({pl, foe}). Nothing is logged or shown.
+func sim_attack(game, sim: Dictionary, base: int) -> void:
+	DamageCmd.attack(game, sim.pl, sim.foe, base, true)
+
+
 ## Work out what this effect would do to the damage preview, without changing the game. sim holds
 ## copies of the two combatants, {pl, foe}, and the effects of one domino run in order on them.
 ## Only effects that change attack damage need to override this (damage, Fury, Power, Boost ...).
+## Change the copies only through the commands with silent = true (DamageCmd, PowerCmd).
 func preview(_game, _domino, _s: int, _sim: Dictionary) -> void:
 	pass
 

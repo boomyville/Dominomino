@@ -7,6 +7,9 @@ extends RefCounted
 ##   Domino            one domino you hold: its kind plus its own pips
 ##   Combatant / Foe   HP, shield and statuses (Fury, Power, Boost) for the player and the enemy
 ##   Status            one status; children of status.gd
+## Relics, statuses and dominoes are all models (model.gd). active_models() lists them and dispatch()
+## calls a hook on each. Changes to HP, shield and statuses go through scripts/cmd/. What has
+## happened this battle is in `history` (combat_log.gd), not in counters.
 ## Ported from the web build (index.html).
 
 const Dominoes = preload("res://scripts/dominoes.gd")
@@ -15,6 +18,10 @@ const Combatant = preload("res://scripts/combatant.gd")
 const Foe = preload("res://scripts/foe.gd")
 const NullUI = preload("res://scripts/null_ui.gd")
 const Relics = preload("res://scripts/relics/relics.gd")
+const AbstractModel = preload("res://scripts/model.gd")
+const CombatLog = preload("res://scripts/combat_log.gd")
+const DamageCmd = preload("res://scripts/cmd/damage_cmd.gd")
+const CreatureCmd = preload("res://scripts/cmd/creature_cmd.gd")
 
 const N := 20
 const MAXE := 10            # energy per turn
@@ -68,7 +75,8 @@ var reward_note := ""           # what the last reward was, shown on the screen 
 # battle
 var pl                 # Combatant: you
 var foe                # Foe: the enemy
-var bat := {}
+var history = CombatLog.new()   # what has happened this battle: query it instead of keeping counters
+var bat := {}          # only state that is not history: {extra_draw}
 var energy := MAXE
 var lives := START_LIVES
 var battle_no := 1
@@ -158,9 +166,9 @@ func start_battle() -> void:
 				chars[CH[who] + Vector2(i, j)] = who
 	energy = energy_cap()
 	played_this_turn = false
-	bat = {"played": 0, "hp_lost": false, "turn": 1, "attacks": 0, "last_attacks": -1,
-			"empty_end": false, "last_empty": false, "extra_draw": 0,
-			"dealt0": stats.dealt, "taken0": stats.taken, "self0": stats.selfdmg}
+	bat = {"extra_draw": 0, "dealt0": stats.dealt, "taken0": stats.taken, "self0": stats.selfdmg}
+	history.clear()
+	history.add("battle_started")
 	stack.clear()
 	for d in collection:
 		stack.append(d.copy())
@@ -184,9 +192,9 @@ func start_battle() -> void:
 	hand.clear()
 	draw(START_HAND)
 	new_intent()
-	fire_relics("battle")
+	dispatch("on_battle_start")
 	_weapon_turn()
-	fire_relics("turn")
+	emit("turn_started", "on_turn_start")
 	draw(bat.extra_draw)
 	busy = 0
 	snapshot_turn()
@@ -206,6 +214,7 @@ func draw_one() -> bool:
 	hand.append(d)
 	stats.drawn += 1
 	_cache.clear()
+	emit("card_drawn", "after_card_drawn", {"title": d.data.title}, {"card": d})
 	return true
 
 
@@ -258,6 +267,7 @@ func _discard_ephemeral() -> void:
 		if d != null and d.data.ephemeral:
 			hand.erase(d)
 			discard.append(d)
+			history.add("card_discarded", {"title": d.data.title})
 
 
 ## Tell the UI which card was just added to the hand. Kept as its own function because arithmetic
@@ -270,13 +280,17 @@ func announce_new_card() -> void:
 func discard_random_from_hand() -> bool:
 	if hand.is_empty():
 		return false
-	discard.append(hand.pop_at(rng.randi() % hand.size()))
+	var d = hand.pop_at(rng.randi() % hand.size())
+	discard.append(d)
+	history.add("card_discarded", {"title": d.data.title})
 	_cache.clear()
 	return true
 
 
 func discard_hand_card(index: int) -> void:
-	discard.append(hand.pop_at(maxi(index, 0)))
+	var d = hand.pop_at(maxi(index, 0))
+	discard.append(d)
+	history.add("card_discarded", {"title": d.data.title})
 	_cache.clear()
 	ui.refresh()
 
@@ -393,7 +407,7 @@ func snapshot_turn() -> void:
 		"occ": occ.duplicate(true), "placed": placed.duplicate(true),
 		"pl": pl.get_state(), "foe": foe.get_state(),
 		"energy": energy, "lives": lives, "played": played_this_turn,
-		"bat": bat.duplicate(true), "stats": stats.duplicate(true), "rng": rng.state,
+		"bat": bat.duplicate(true), "history": history.save(), "stats": stats.duplicate(true), "rng": rng.state,
 	}
 
 
@@ -434,12 +448,11 @@ func restart_turn() -> bool:
 	energy = t.energy
 	played_this_turn = t.played
 	bat = t.bat.duplicate(true)
+	history.load_saved(t.history)
 	stats = t.stats.duplicate(true)
 	rng.state = t.rng
 	lives = t.lives - 1
 	stats.lost += 1
-	for r in relics + stored_relics:
-		r.reset_runtime()
 	busy = 0
 	_cache.clear()
 	ui.flash()
@@ -459,8 +472,6 @@ func restart_battle() -> bool:
 	foe = Foe.new(battle_no)
 	ended = false
 	reason = ""
-	for r in relics + stored_relics:
-		r.reset_runtime()
 	start_battle()
 	ui.refresh()
 	return true
@@ -588,10 +599,38 @@ func relic_sum(key: String) -> int:
 	return n
 
 
-## Run every relic that listens to this hook (see relics/relic.gd), in the order you got them.
-func fire_relics(hook: String, ctx: Dictionary = {}) -> void:
-	for r in relics:
-		r.trigger(self, hook, ctx)
+## Every model that can react right now: relics, the statuses on both combatants and the dominoes in
+## your hand. p / f replace you / the enemy (previews pass copies).
+func active_models(p = null, f = null) -> Array:
+	var out := []
+	out.append_array(relics)
+	out.append_array((p if p != null else pl).models())
+	out.append_array((f if f != null else foe).models())
+	out.append_array(hand)
+	return out
+
+
+## Call a hook (one of AbstractModel.HOOKS) on every active model, lowest priority first. The list
+## is copied first, so a hook that changes the hand or the board cannot upset the loop.
+func dispatch(hook: String, ctx: Dictionary = {}) -> void:
+	assert(AbstractModel.HOOKS.has(hook), "unknown hook: " + hook)
+	for m in AbstractModel.in_order(active_models()):
+		m.call(hook, self, ctx)
+
+
+## Write an event to the combat history and, if hook is not "", dispatch it. The hook gets the event
+## data plus anything in extra (live objects such as source, target, card).
+func emit(type: String, hook: String = "", data: Dictionary = {}, extra: Dictionary = {}) -> void:
+	var ev := history.add(type, data)
+	if hook != "":
+		var ctx := ev.duplicate()
+		ctx.merge(extra)
+		dispatch(hook, ctx)
+
+
+## "p" for you, "c" for the enemy (the side names the UI uses).
+func side_of(creature) -> String:
+	return "p" if creature == pl else "c"
 
 
 ## Energy you start each turn with.
@@ -605,9 +644,12 @@ func gain_energy(n: int) -> void:
 
 
 func gain_shield(n: int) -> void:
-	pl.shield += n
-	stats.shield += n
-	ui.float_text("p", "+%d shield" % n)
+	CreatureCmd.gain_shield(self, pl, n)
+
+
+func gain_life(n: int) -> void:
+	lives += n
+	ui.float_text("p", "+%d li%s" % [n, "fe" if n == 1 else "ves"])
 
 
 ## Draw right now because of a relic (nothing is drawn if the hand is full or the stack is empty).
@@ -817,9 +859,9 @@ func caps(i: int) -> Array:
 func intent_text(it: Dictionary) -> String:
 	match it.k:
 		"atk":
-			return "Attack %d" % foe.attack_damage(it.v)
+			return "Attack %d" % DamageCmd.attack_value(self, foe, pl, it.v)
 		"lifeatk":
-			return "Attack %d (lose a life if unblocked)" % foe.attack_damage(it.v)
+			return "Attack %d (lose a life if unblocked)" % DamageCmd.attack_value(self, foe, pl, it.v)
 		"blk":
 			return "Block %d" % it.v
 		"discH":
@@ -859,9 +901,9 @@ func preview_intents(with_loss: bool = true) -> Dictionary:
 	for it in foe.intent:
 		var text := intent_text(it)
 		if it.k == "atk" or it.k == "lifeatk":
-			var dmg: int = sim_foe.attack_damage(it.v)
-			var r: Dictionary = sim_pl.take_damage(dmg)
-			sim_foe.finish_attack()
+			var dmg: int = DamageCmd.attack_value(self, sim_foe, sim_pl, it.v)
+			var r: Dictionary = DamageCmd.deal(self, sim_foe, sim_pl, dmg, true)
+			DamageCmd.finish_attack(self, sim_foe, true)
 			out.attacks += 1
 			out.loss += r.taken
 			out.absorbed += r.absorbed
@@ -884,20 +926,12 @@ func preview_intents(with_loss: bool = true) -> Dictionary:
 # ---- combat ---------------------------------------------------------------
 
 func hit_foe(n: int) -> void:
-	var r: Dictionary = foe.take_damage(n)
-	stats.dealt += r.taken
-	ui.float_text("c", "-%d" % r.taken if r.taken > 0 else "Blocked")
+	DamageCmd.deal(self, pl, foe, n)
 
 
 ## Returns the damage that got through the shield.
 func hit_pl(n: int) -> int:
-	var r: Dictionary = pl.take_damage(n)
-	stats.taken += r.taken
-	stats.absorbed += r.absorbed
-	if r.taken > 0:
-		bat.hp_lost = true
-	ui.float_text("p", "-%d HP" % r.taken if r.taken > 0 else "Blocked")
-	return r.taken
+	return DamageCmd.deal(self, foe, pl, n).taken
 
 
 func lose_life() -> void:
@@ -912,7 +946,7 @@ func lose_life() -> void:
 func new_intent() -> void:
 	# planned from the seed, the battle and the turn only: restarting gives the same plans
 	var r_in := RandomNumberGenerator.new()
-	r_in.seed = hash("intent:%d:%d:%d" % [seed_value, battle_no, bat.turn])
+	r_in.seed = hash("intent:%d:%d:%d" % [seed_value, battle_no, history.turn])
 	var n := 1 if r_in.randf() < 0.5 else 2
 	var lv := battle_no - 1
 	var out := []
@@ -1006,16 +1040,16 @@ func play_domino(m: Dictionary) -> void:
 	# the played domino stays on the board: it does not go to the discard pile
 	var d = hand[m.i]
 	hand.remove_at(m.i)
-	bat.played += 1
-	if d.data.has_attack():
-		bat.attacks += 1
-	var ctx := {"a": m.a, "b": m.b, "cost": ck.cost}
+	var played := history.add("domino_played", {"a": m.a, "b": m.b, "cost": ck.cost,
+			"attack": d.data.has_attack()})
+	var ctx := played.duplicate()
+	ctx["domino"] = d
 	busy = 2
 	_cache.clear()
 	ui.note_play()
 	ui.refresh()
 	await ui.pause(0.25)
-	fire_relics("play", ctx)
+	dispatch("on_domino_played", ctx)
 	await run_fx(d)
 	busy = 0
 	ui.note_play()
@@ -1041,7 +1075,7 @@ func run_fx(d) -> void:
 		ui.refresh()
 		await ui.pause(0.16)
 	if d.data.has_attack():
-		pl.finish_attack()     # Fury / Impair tick down, Boost is used up (Power stays until the battle ends)
+		DamageCmd.finish_attack(self, pl)     # Fury / Impair tick down, Boost is used up (Power stays until the battle ends)
 	_cache.clear()
 
 
@@ -1052,8 +1086,7 @@ func end_turn() -> void:
 		return
 	busy = 1
 	_discard_ephemeral()
-	bat.empty_end = hand.is_empty()
-	fire_relics("turn_end")
+	emit("turn_ended", "on_turn_end", {"hand_empty": hand.is_empty()})
 	stats.wasted += energy
 	energy = 0
 	_cache.clear()
@@ -1101,13 +1134,12 @@ func end_turn() -> void:
 func _enemy_act(it: Dictionary) -> void:
 	match it.k:
 		"atk", "lifeatk":
-			var taken := hit_pl(foe.attack_damage(it.v))
-			foe.finish_attack()
+			var taken: int = DamageCmd.attack(self, foe, pl, it.v).taken
+			DamageCmd.finish_attack(self, foe)
 			if it.k == "lifeatk" and taken > 0:
 				lose_life()
 		"blk":
-			foe.shield += it.v
-			ui.float_text("c", "+%d shield" % it.v)
+			CreatureCmd.gain_shield(self, foe, it.v)
 		"discH":
 			if discard_random_from_hand():
 				ui.float_text("p", "Domino discarded")
@@ -1126,16 +1158,12 @@ func _enemy_act(it: Dictionary) -> void:
 ## Start-of-turn bookkeeping, in a normal function for the same reason.
 func _new_turn_state() -> void:
 	stats.turn += 1
-	bat.turn += 1
-	bat.last_attacks = bat.attacks
-	bat.attacks = 0
-	bat.last_empty = bat.empty_end
-	bat.empty_end = false
+	history.next_turn()
 	bat.extra_draw = 0
 	energy = energy_cap()
 	played_this_turn = false
 	_weapon_turn()
-	fire_relics("turn")        # before the excess shield is cut, so relics can look at it
+	emit("turn_started", "on_turn_start")        # before the excess shield is cut, so relics can look at it
 	if pl.shield > pl.max_shield:
 		pl.shield = pl.max_shield
 		ui.float_text("p", "Excess shield lost")
@@ -1199,7 +1227,7 @@ func _begin_reward() -> Array:
 	stats.battles += 1
 	victory_summary = _victory_numbers()
 	gems += victory_summary.gems
-	fire_relics("victory")
+	dispatch("on_victory")
 	pl = fresh_player()      # statuses and shield are cleared, HP is kept
 	shop_pending = battle_no == 1 or rng.randf() < SHOP_CHANCE
 	shop = generate_shop() if shop_pending else []

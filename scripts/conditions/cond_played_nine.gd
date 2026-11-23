@@ -8,4 +8,4 @@ func _init() -> void:
 
 
 func met(game, i: int) -> bool:
-	return game.bat.played >= 9
+	return game.history.count("domino_played") >= 9

@@ -8,11 +8,13 @@ func _init() -> void:
 	id = "fury"
 
 
-func modify_damage(n: int) -> int:
-	return n + value
+func modify_damage_additive(_base: int, ctx: Dictionary) -> int:
+	return value if is_source(ctx) else 0
 
 
-func on_attack_done() -> void:
+func after_attack(_game, ctx: Dictionary) -> void:
+	if not is_source(ctx):
+		return
 	if value > 0:
 		value -= 1
 	elif value < 0:

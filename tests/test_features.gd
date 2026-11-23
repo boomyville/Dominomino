@@ -657,7 +657,7 @@ func _tests() -> void:
 	g3.new_game(g.seed_value + 1)
 	expect(_stack_titles(g3) != stack1 or g3.foe.intent != intents1, "another seed gives another battle")
 	# the plan for later turns depends on the seed, the battle and the turn only
-	g.bat.turn = 5
+	g.history.turn = 5
 	g.new_intent()
 	var turn5: Array = g.foe.intent.duplicate(true)
 	g.rng.randi()
@@ -825,6 +825,7 @@ func _tests() -> void:
 	expect(g.lives == 2 and g.energy == e0 and _hand_titles(g) == hand0 and _stack_titles(g) == stack_before, "back at the start of the turn for 1 life: same hand, same stack, same energy")
 	expect(g.pl.shield == 0 and g.pl.value("fury") == 0 and g.foe.hp == g.foe.max_hp and g.foe.intent == foe_intent and g.placed.is_empty() and g.occ.is_empty(), "the board, both fighters and the enemy plan are restored")
 	expect(not g.played_this_turn and g.stats.lost == 1, "no domino played yet this turn; the life is counted as lost")
+	expect(g.history.count("domino_played") == 0 and g.history.count("damage") == 0, "the combat history is rewound too")
 	g.lives = 1
 	expect(not g.can_rewind_turn() and not g.restart_turn(), "cannot rewind with only 1 life left")
 	g.lives = 3
@@ -853,7 +854,7 @@ func _tests() -> void:
 	g.foe.intent = []
 	g.played_this_turn = true
 	await g.end_turn()
-	expect(g.turn_snap.bat.turn == 2 and g.turn_snap.lives == 3, "a new snapshot is taken at the start of every turn")
+	expect(g.turn_snap.history.turn == 2 and g.turn_snap.lives == 3, "a new snapshot is taken at the start of every turn")
 
 	# ---------- gems, victory and the shop ----------
 	g = fresh()

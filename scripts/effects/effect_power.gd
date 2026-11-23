@@ -7,10 +7,8 @@ func text(_game, s: int) -> String:
 
 
 func apply(game, _domino, s: int) -> void:
-	var v := value(s)
-	game.pl.add("power", v)
-	game.ui.float_text("p", "Power +%d" % v)
+	PowerCmd.apply(game, game.pl, "power", value(s))
 
 
 func preview(_game, _domino, s: int, sim: Dictionary) -> void:
-	sim.pl.add("power", value(s))
+	PowerCmd.apply(null, sim.pl, "power", value(s), true)

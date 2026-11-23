@@ -2,6 +2,7 @@ extends RefCounted
 ## Something that fights: the player or the enemy. Holds HP, shield and statuses, and knows how to
 ## take damage and work out the damage it deals. (The old code kept these as two loose dictionaries.)
 
+const DamageCmd = preload("res://scripts/cmd/damage_cmd.gd")
 const StatusFury = preload("res://scripts/status/status_fury.gd")
 const StatusPower = preload("res://scripts/status/status_power.gd")
 const StatusBoost = preload("res://scripts/status/status_boost.gd")
@@ -13,7 +14,7 @@ var hp := 50
 var max_hp := 50
 var shield := 0
 var max_shield := 9
-var statuses := {}     # id -> Status
+var statuses := {}     # id -> Status (each one is a model, see model.gd)
 
 
 func _init(hit_points: int = 50) -> void:
@@ -37,7 +38,13 @@ static func _make_status(id: String):
 func status(id: String):
 	if not statuses.has(id):
 		statuses[id] = _make_status(id)
+		statuses[id].owner = self
 	return statuses[id]
+
+
+## The models that live on this combatant (its statuses).
+func models() -> Array:
+	return statuses.values()
 
 
 func value(id: String) -> int:
@@ -49,18 +56,18 @@ func add(id: String, n: int) -> void:
 	s.value += n
 
 
-## Damage this combatant deals after every status has had its say (never below 0).
+## Damage this combatant deals with only its own statuses counted (never below 0). The game asks
+## DamageCmd.attack_value instead, which also counts the target, relics and every other model.
 func attack_damage(base: int) -> int:
-	var n := base
-	for s in statuses.values():
-		n = s.modify_damage(n)
-	return maxi(0, n)
+	return DamageCmd.calculate(models(), base, {"source": self, "base": base})
 
 
-## Call once after an attack: Fury / Impair tick toward 0 and Boost is used up. Power stays.
+## Tick this combatant's own statuses after an attack (Fury / Impair toward 0, Boost used up, Power
+## stays). Used for copies in previews. In the game, DamageCmd.finish_attack runs the after_attack
+## hook on every model instead.
 func finish_attack() -> void:
-	for s in statuses.values():
-		s.on_attack_done()
+	for s in models():
+		s.after_attack(null, {"source": self})
 
 
 ## Shield soaks damage first. Returns {absorbed, taken}.

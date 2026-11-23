@@ -7,6 +7,11 @@ dominoes.gd      the catalogue table (80 dominoes + Garbage) and build(), which 
     conditions/    Condition    one class per play condition ("you have no shield", ...)
 domino.gd        Domino       one domino you hold: its DominoData plus its own pips (a, b)
 
+model.gd         AbstractModel  the one base class of everything that reacts to combat: Relic, Status, Domino.
+                              Empty event hooks (on_turn_end, after_damage ...) and damage math hooks
+combat_log.gd    CombatLog    what has happened this battle, as a list of events you can query
+cmd/             DamageCmd, PowerCmd, CreatureCmd: the only code that changes HP, shield and statuses
+
 combatant.gd     Combatant    HP, shield, max shield and statuses. The player is one, the enemy is a Foe
 foe.gd             Foe        a Combatant with a level, a name and the intents it has planned
 status/          Status       one class per status: Fury (and Impair), Power, Boost
@@ -23,6 +28,33 @@ elements.gd      pip number -> element (1 light, 2 earth, 3 water, 4 fire, 5 lig
 relics/          relics.gd = the 30 relics (a table), relic.gd = what a relic does (hook, condition, action)
 hp_preview.gd    the dark block on an HP bar that shows HP about to be lost
 ```
+
+## Models, hooks and commands
+Game is plain data and rules (no nodes). Three rules keep it easy to extend:
+
+1. **One list of models.** `Game.active_models()` is every relic, every status on both combatants and every
+   domino in your hand. `Game.dispatch("after_damage", ctx)` calls that hook on each, lowest `priority` first,
+   then in list order, so the result never depends on who was added first. Hooks are listed in
+   `AbstractModel.HOOKS`; override only what you need. A hook gets `game == null` in a preview.
+2. **Commands change state.** An effect or relic says what it wants (`DamageCmd.attack(game, game.pl, game.foe, 6)`,
+   `PowerCmd.apply(game, game.pl, "fury", 2)`, `CreatureCmd.gain_shield(game, game.pl, 4)`). The command runs the
+   math hooks, changes the Combatant, writes the history, updates stats, shows the floating text and runs the
+   after hooks. A Combatant only stores numbers and does basic subtraction. Pass `silent = true` to run a command on
+   preview copies: nothing is logged or shown. `tests/test_architecture.gd` fails if an effect, condition or relic
+   writes to a Combatant directly.
+3. **Ask the history, do not keep counters.** `game.history` holds events like `domino_played {attack, cost}`,
+   `hp_lost {who, amount}`, `turn_ended {hand_empty}`. `history.count("domino_played", {"turn": history.prev(),
+   "attack": true})` answers "attacks last turn". `game.bat` only keeps `extra_draw`, which is not history.
+
+Damage is worked out in three passes (`DamageCmd.calculate`): additive (`modify_damage_additive`, summed),
+multiplicative (`modify_damage_multiplicative`, multiplied), then cap/override (`modify_damage_cap`, by priority).
+Only the last pass cares about order, and priority sets it. A status checks `is_source(ctx)` or `ctx.target == owner`
+so it only acts for its own side.
+
+### Add a model that reacts (a new relic kind, status or domino power)
+Extend `model.gd` (or `status.gd`), override a hook, and add it to the list `active_models()` builds. To change damage,
+override a `modify_damage_*` hook. To react to something that has no hook yet, add the hook to `model.gd` and
+`HOOKS`, then call `game.emit(type, "your_hook", data)` where it happens.
 
 ## The screen
 Everything except the board is a scene made of containers, styled by one theme (`themes/main_theme.tres`):
@@ -50,7 +82,8 @@ edit the matching script. The board stays in `_draw` on purpose: isometric depth
 ## Add a new status
 1. Copy `status/status_power.gd` (or `status_fury.gd` if it should tick down).
 2. Add it to `_make_status` and `STATUS_ORDER` in `combatant.gd`.
-3. Give it an effect that calls `game.pl.add("<id>", n)`.
+3. Give it an effect that calls `PowerCmd.apply(game, game.pl, "<id>", n)`.
+Override `modify_damage_additive` / `modify_damage_multiplicative` for damage and `after_attack` for ticking.
 
 ## Add a new play condition
 Copy a file in `scripts/conditions/`, register it in `conditions/condition_factory.gd`, and put its id in the
@@ -74,20 +107,22 @@ replaces the built-in icon. `Icons.NAME` maps effect/intent kinds to names; full
 In any RichTextLabel text, `:fury:` shows that icon (`DominoText.append_rich`). `Icons.SIZE` sets the draw size.
 
 ## Relics
-`relics/relics.gd` is a table. Each row: when (`on`: battle, turn, turn_end, play, passive), an optional
+`relics/relics.gd` is a table. Each row: when (`on`: battle, turn, turn_end, play, victory, passive), an optional
 condition (`if`), one action (`do`) and an amount (`v`). Add a row and it works; new conditions or actions go in
-`relic.gd`. `game.gd` calls `fire_relics(hook)` at those moments. Only EQUIPPED relics (`game.relics`, at most `EQUIP_SLOTS` = 8) do anything; the rest sit in
+`relic.gd`. `game.gd` dispatches the matching model hook (`on_battle_start`, `on_turn_start`, `on_turn_end`, `on_domino_played`, `on_victory`) at those moments.
+"once" and conditions about earlier turns ask `game.history`. Only EQUIPPED relics (`game.relics`, at most `EQUIP_SLOTS` = 8) do anything; the rest sit in
 `game.stored_relics` until you equip them in the inventory.
 
 ## Previews
 `game.preview_player_attack(i)` runs a domino's effects on copies of the combatants (`Effect.preview`) to get the
 HP the enemy would lose. `game.preview_intents()` does the same for the enemy's attacks against your shield.
-Both feed the tags in `hud.update_tags`. A new effect that changes damage should override `preview`.
+Both feed the tags in `hud.update_tags`. A new effect that changes damage should override `preview` and use the commands with `silent = true`.
 
 ## More tests
 ```
 godot --headless -s tests/test_features.gd   # relics, new dominoes, previews, icons
 godot --headless -s tests/test_ui.gd         # tags, previews on the bars, relic bar and cards
+godot --headless -s tests/test_architecture.gd   # hook order, damage passes, history, commands, no direct writes
 ```
 
 ## Rewards, healing and the screen between battles

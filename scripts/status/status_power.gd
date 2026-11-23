@@ -6,8 +6,8 @@ func _init() -> void:
 	id = "power"
 
 
-func modify_damage(n: int) -> int:
-	return n + value
+func modify_damage_additive(_base: int, ctx: Dictionary) -> int:
+	return value if is_source(ctx) else 0
 
 
 func text() -> String:

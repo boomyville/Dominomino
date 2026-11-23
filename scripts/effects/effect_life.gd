@@ -7,6 +7,4 @@ func text(_game, s: int) -> String:
 
 
 func apply(game, _domino, s: int) -> void:
-	var v := value(s)
-	game.lives += v
-	game.ui.float_text("p", "+%d lives" % v)
+	game.gain_life(value(s))

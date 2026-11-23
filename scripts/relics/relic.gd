@@ -1,14 +1,15 @@
-extends RefCounted
-## One relic you own. A relic is data (a row of relics.gd) plus this small interpreter:
+extends "res://scripts/model.gd"
+## One relic you own. A relic is a model (see model.gd). It is data (a row of relics.gd) plus this small interpreter:
 ##   WHEN it fires (hook), an optional CONDITION that must hold, and ONE ACTION with an amount.
 ##
-## Hooks (when game.gd calls fire_relics):
-##   battle    when a battle starts (the player has just been reset)
-##   turn      at the start of each of your turns, including the first turn of a battle
-##   turn_end  when you press End turn, before the enemy acts
-##   play      when you play a domino, before its effects (ctx = {a, b, cost})
-##   victory   when you win a battle (before the rewards)
+## Hooks (the model hooks that game.gd dispatches; the name in "on" is the short form):
+##   battle    on_battle_start   when a battle starts (the player has just been reset)
+##   turn      on_turn_start     at the start of each of your turns, including the first turn of a battle
+##   turn_end  on_turn_end       when you press End turn, before the enemy acts
+##   play      on_domino_played  when you play a domino, before its effects (ctx = {a, b, cost})
+##   victory   on_victory        when you win a battle (before the rewards)
 ##   passive   never fires: the amount is simply added to a number the game asks about
+## A row can set "prio" (lower fires first; the default 0 keeps the order you got the relics in).
 ##
 ## Conditions ("if" in the row, "" = always):
 ##   noShield, fullShield, excessShield   your shield is 0 / equals max shield / is above max shield
@@ -33,9 +34,13 @@ extends RefCounted
 ## A WEAPON is a relic with "weapon": true and no hook. It adds dominoes instead: each entry of "adds" is
 ## {t: domino name, n: how many, a, b: pips (-1 = random), when: battle or turn, pos: stack, bottom, top or hand}.
 ## You can carry many weapons but have only ONE equipped: it cannot be unequipped, only replaced.
-## "once": true means it can fire at most once per turn.
+## "once": true means it can fire at most once per turn (it asks the combat log, see combat_log.gd).
+## Conditions that look at earlier turns also ask the combat log; relics keep no counters of their own.
 
-var id := ""
+const CreatureCmd = preload("res://scripts/cmd/creature_cmd.gd")
+const DamageCmd = preload("res://scripts/cmd/damage_cmd.gd")
+const PowerCmd = preload("res://scripts/cmd/power_cmd.gd")
+
 var title := ""
 var rarity := "c"
 var text := ""
@@ -48,7 +53,6 @@ var once := false
 var weapon := false
 var starter := false      # you start the run with it: never offered as a reward or sold
 var adds := []
-var _last_key := -1
 
 const RARITY_NAMES := {"c": "Common", "u": "Uncommon", "r": "Rare"}
 
@@ -67,15 +71,11 @@ func setup(row: Dictionary, icons) -> void:
 	adds = row.get("adds", [])
 	hook = row.get("on", "")
 	act = row.get("do", "")
+	priority = int(row.get("prio", 0))
 
 
 func is_relic() -> bool:
 	return true
-
-
-## Forget "once per turn" memory (after a battle or turn is restarted).
-func reset_runtime() -> void:
-	_last_key = -1
 
 
 func rarity_name() -> String:
@@ -102,17 +102,36 @@ func passive_value(key: String) -> int:
 	return amount if hook == "passive" and act == key else 0
 
 
-## Called by game.gd for every hook. Does nothing unless this is the right hook and the condition holds.
+func on_battle_start(game, ctx: Dictionary) -> void:
+	trigger(game, "battle", ctx)
+
+
+func on_turn_start(game, ctx: Dictionary) -> void:
+	trigger(game, "turn", ctx)
+
+
+func on_turn_end(game, ctx: Dictionary) -> void:
+	trigger(game, "turn_end", ctx)
+
+
+func on_domino_played(game, ctx: Dictionary) -> void:
+	trigger(game, "play", ctx)
+
+
+func on_victory(game, ctx: Dictionary) -> void:
+	trigger(game, "victory", ctx)
+
+
+## Does nothing unless this is the right hook and the condition holds.
 func trigger(game, which: String, ctx: Dictionary = {}) -> void:
 	if which != hook or hook == "passive":
 		return
 	if not _holds(game, ctx):
 		return
 	if once:
-		var key: int = game.battle_no * 1000 + game.bat.turn
-		if key == _last_key:
+		if game.history.has("relic_fired", {"relic": id, "turn": game.history.turn}):
 			return
-		_last_key = key
+		game.history.add("relic_fired", {"relic": id})
 	_do(game)
 
 
@@ -129,9 +148,11 @@ func _holds(game, ctx: Dictionary) -> bool:
 		"energy4":
 			return game.energy >= 4
 		"noAtkLast":
-			return game.bat.last_attacks == 0
+			return game.history.has_previous_turn() and not game.history.has(
+					"domino_played", {"turn": game.history.prev(), "attack": true})
 		"emptyLast":
-			return game.bat.last_empty
+			return game.history.has_previous_turn() and game.history.has(
+					"turn_ended", {"turn": game.history.prev(), "hand_empty": true})
 		"spentAll":
 			return game.energy == 0 and int(ctx.get("cost", 0)) > 0
 		"pip":
@@ -157,8 +178,7 @@ func _do(game) -> void:
 		"shield":
 			game.gain_shield(amount)
 		"max_shield":
-			game.pl.max_shield += amount
-			game.ui.float_text("p", "Max shield +%d" % amount)
+			CreatureCmd.gain_max_shield(game, game.pl, amount)
 		"draw":
 			if hook == "play":
 				game.relic_draw(amount)
@@ -166,31 +186,22 @@ func _do(game) -> void:
 				# turn and battle hooks only count the extra cards: game.gd draws them with the others
 				game.bat.extra_draw += amount
 		"fury":
-			game.pl.add("fury", amount)
-			game.ui.float_text("p", game.pl.fury_text())
+			PowerCmd.apply(game, game.pl, "fury", amount)
 		"power":
-			game.pl.add("power", amount)
-			game.ui.float_text("p", "Power +%d" % amount)
+			PowerCmd.apply(game, game.pl, "power", amount)
 		"boost":
-			game.pl.add("boost", amount)
-			game.ui.float_text("p", "Boost +%d" % amount)
+			PowerCmd.apply(game, game.pl, "boost", amount)
 		"impair":
-			game.foe.add("fury", -amount)
-			game.ui.float_text("c", game.foe.fury_text())
+			PowerCmd.apply(game, game.foe, "fury", -amount)
 		"heal":
-			var healed: int = game.pl.heal(amount)
-			game.stats.healed += healed
-			game.ui.float_text("p", "+%d HP" % healed)
+			CreatureCmd.heal(game, game.pl, amount)
 		"damage":
-			game.hit_foe(amount)
+			DamageCmd.deal(game, game.pl, game.foe, amount, false, "relic")
 		"restack":
 			game.restack_random(amount)
 		"max_hp":
-			game.pl.max_hp += amount
-			game.pl.hp += amount
-			game.ui.float_text("p", "Max HP +%d" % amount)
+			CreatureCmd.gain_max_hp(game, game.pl, amount)
 		"life":
-			game.lives += amount
-			game.ui.float_text("p", "+%d life" % amount)
+			game.gain_life(amount)
 		_:
 			push_error("unknown relic action: " + act)

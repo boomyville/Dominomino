@@ -7,6 +7,4 @@ func text(_game, s: int) -> String:
 
 
 func apply(game, _domino, s: int) -> void:
-	var healed: int = game.pl.heal(value(s))
-	game.stats.healed += healed
-	game.ui.float_text("p", "+%d HP" % healed)
+	CreatureCmd.heal(game, game.pl, value(s))

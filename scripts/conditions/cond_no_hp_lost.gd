@@ -8,4 +8,4 @@ func _init() -> void:
 
 
 func met(game, i: int) -> bool:
-	return not game.bat.hp_lost
+	return not game.history.has("hp_lost", {"who": "p"})

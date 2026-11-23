@@ -7,5 +7,4 @@ func text(_game, s: int) -> String:
 
 
 func apply(game, _domino, s: int) -> void:
-	game.pl.add("fury", -value(s))
-	game.ui.float_text("p", game.pl.fury_text())
+	PowerCmd.apply(game, game.pl, "fury", -value(s))

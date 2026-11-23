@@ -1,4 +1,4 @@
-extends RefCounted
+extends "res://scripts/model.gd"
 ## One domino you own or hold: its kind (data) and its own pips.
 ## Where it is on the board is a separate placement ({x, y, rot, a, b}), see game.gd.
 

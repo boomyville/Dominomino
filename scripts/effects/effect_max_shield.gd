@@ -7,6 +7,4 @@ func text(_game, s: int) -> String:
 
 
 func apply(game, _domino, s: int) -> void:
-	var v := value(s)
-	game.pl.max_shield += v
-	game.ui.float_text("p", "Max shield +%d" % v)
+	CreatureCmd.gain_max_shield(game, game.pl, value(s))
