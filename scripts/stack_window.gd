@@ -8,6 +8,7 @@ extends PanelContainer
 signal closed
 
 const FlatScene = preload("res://scenes/flat_domino.tscn")
+const DominoArt = preload("res://scripts/domino_art.gd")
 const OPACITY := {"stack": 1.0, "hand": 0.6, "drawn": 0.3}
 
 @onready var title_l: Label = %Title
@@ -86,9 +87,9 @@ func _entry(e: Dictionary) -> Button:
 	b.add_child(row)
 	var flat = FlatScene.instantiate()
 	row.add_child(flat)
-	flat.set_domino(d.a, d.b)
+	flat.set_domino(d.a, d.b, 0.0, false, DominoArt.sides(d))
 	var l := Label.new()
-	l.text = "%s  %d|%d" % [d.data.title, d.a, d.b]
+	l.text = "%s  %s" % [d.data.title, d.pips_text()]
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(l)

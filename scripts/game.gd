@@ -132,24 +132,26 @@ static func new_stats() -> Dictionary:
 
 # ---- making dominoes ------------------------------------------------------
 
-func make_domino(type_id: int, pips_a: int, pips_b: int):
+## A domino of this kind with the kind's own pips (see pip_spec.gd). Give pips_a / pips_b (0 to 6) to
+## force a stable pip of that value on that half.
+func make_domino(type_id: int, pips_a: int = -1, pips_b: int = -1):
 	return Domino.new(data[type_id], pips_a, pips_b)
 
 
-## A random domino of a random kind (never Garbage), with random pips.
+## A random domino of a random kind (never Garbage) with the kind's pips.
 func new_domino():
-	return make_domino(Dominoes.rand_type(rng), rng.randi() % 7, rng.randi() % 7)
+	return make_domino(Dominoes.rand_type(rng))
 
 
 func garbage():
-	return make_domino(Dominoes.GARBAGE, 0, 0)
+	return make_domino(Dominoes.GARBAGE)
 
 
-## The starting deck is the first 20 kinds of the catalogue with random pips.
+## The starting deck is the first 20 kinds of the catalogue.
 func starter_collection() -> Array:
 	var out := []
 	for i in 20:
-		out.append(make_domino(i, rng.randi() % 7, rng.randi() % 7))
+		out.append(make_domino(i))
 	return out
 
 
@@ -187,6 +189,8 @@ func start_battle() -> void:
 		stack.insert(0, d)       # the bottom of the stack: drawn last
 	for d in top:
 		stack.append(d)          # the top of the stack: drawn first
+	for d in stack:
+		d.roll_all(rng)          # unstable and volatile pips get their value for this battle
 	battle_deck = stack.duplicate()
 	discard.clear()
 	hand.clear()
@@ -262,10 +266,20 @@ func _weapon_dominoes(when: String) -> Array:
 			continue
 		var kind := Dominoes.index_of(add.t)
 		for i in add.n:
-			var pa: int = add.a if add.a >= 0 else rng.randi() % 7
-			var pb: int = add.b if add.b >= 0 else rng.randi() % 7
-			out.append({"d": make_domino(kind, pa, pb), "pos": add.pos})
+			var d = make_domino(kind)
+			d.roll_all(rng)
+			out.append({"d": d, "pos": add.pos})
 	return out
+
+
+## Start of a turn: dominoes with volatile pips get new values wherever they are (stack, hand or discard
+## pile). Dominoes already played on the board keep the pips they were played with.
+func _roll_volatile_pips() -> void:
+	for pile in [stack, hand, discard]:
+		for d in pile:
+			if d != null and d.has_volatile():
+				d.roll_volatile(rng)
+	_cache.clear()
 
 
 ## The weapon's start-of-turn dominoes go straight into your hand (if there is room).
@@ -316,10 +330,10 @@ func discard_hand_card(index: int) -> void:
 	ui.refresh()
 
 
+## Reroll effects change only the current pips, so they end with the battle (see domino.gd).
 func reroll_hand() -> void:
 	for d in hand:
-		d.a = rng.randi() % 7
-		d.b = rng.randi() % 7
+		d.reroll(rng)
 	stats.rerolls += hand.size()
 	_cache.clear()
 	ui.float_text("p", "Rerolled hand")
@@ -327,15 +341,23 @@ func reroll_hand() -> void:
 
 func reroll_card(index: int) -> void:
 	var d = hand[maxi(index, 0)]
-	d.a = rng.randi() % 7
-	d.b = rng.randi() % 7
+	d.reroll(rng)
 	stats.rerolls += 1
 	_cache.clear()
 
 
+## Uptick: both current pips of a domino in hand go up by 1 (max 6) until the battle ends.
+func uptick_card(index: int) -> void:
+	hand[maxi(index, 0)].uptick()
+	_cache.clear()
+	ui.float_text("p", "Uptick")
+
+
 func generate_into_stack(n: int) -> void:
 	for i in n:
-		stack.insert(rng.randi() % (stack.size() + 1), new_domino())
+		var d = new_domino()
+		d.roll_all(rng)
+		stack.insert(rng.randi() % (stack.size() + 1), d)
 
 
 ## Indices of the stack, sorted by domino name (so the stack order is not revealed).
@@ -434,7 +456,7 @@ func snapshot_turn() -> void:
 func _states(pile: Array) -> Array:
 	var out := []
 	for d in pile:
-		out.append({"d": d, "a": d.a, "b": d.b, "ang": d.ang} if d != null else null)
+		out.append({"d": d, "a": d.a, "b": d.b, "rolled": d.rolled, "ang": d.ang} if d != null else null)
 	return out
 
 
@@ -447,6 +469,7 @@ func _restore_pile(states: Array) -> Array:
 		var d = st.d
 		d.a = st.a
 		d.b = st.b
+		d.rolled = st.rolled
 		d.ang = st.ang
 		out.append(d)
 	return out
@@ -533,7 +556,7 @@ func _domino_price(r: String) -> int:
 ## 5 dominoes (one of them always rare), 2 artifacts (twice the price of a domino of their rarity) and
 ## 1 weapon (1.5 times). Rarer ones turn up less often (60 / 30 / 10).
 func generate_shop() -> Array:
-	var doms := [make_domino(Dominoes.rand_type_of("r", rng), rng.randi() % 7, rng.randi() % 7)]
+	var doms := [make_domino(Dominoes.rand_type_of("r", rng))]
 	for i in 4:
 		doms.append(new_domino())
 	rshuffle(doms)
@@ -850,7 +873,7 @@ func place(m: Dictionary, who: String) -> void:
 func fx_lines(d) -> Array:
 	var out := []
 	for e in d.data.effects:
-		out.append(e.text_for(self, d, d.total()))
+		out.append(e.shown_text(self, d))
 	return out
 
 
@@ -858,7 +881,7 @@ func fx_lines(d) -> Array:
 func fx_entries(d) -> Array:
 	var out := []
 	for e in d.data.effects:
-		out.append({"k": e.icon(), "text": e.text_for(self, d, d.total())})
+		out.append({"k": e.icon(), "text": e.shown_text(self, d)})
 	return out
 
 
@@ -870,7 +893,7 @@ func caps(i: int) -> Array:
 		return [{"k": "x", "num": ""}]
 	var chips := []
 	for e in d.data.effects:
-		chips.append({"k": e.icon(), "num": e.caption_for(self, d, d.total())})
+		chips.append({"k": e.icon(), "num": e.shown_caption(self, d)})
 	if not cond_ok(i):
 		return [{"k": "x", "num": chips[0].num if chips.size() > 0 else ""}]
 	return chips
@@ -903,7 +926,7 @@ func preview_player_attack(i: int) -> Dictionary:
 		return out
 	var sim := {"pl": pl.snapshot(), "foe": foe.snapshot()}
 	for e in d.data.effects:
-		e.preview(self, d, d.total(), sim)
+		e.preview(self, d, e.size_for(d), sim)
 	out.attack = true
 	out.hp = foe.hp - sim.foe.hp
 	out.absorbed = foe.shield - sim.foe.shield
@@ -1090,7 +1113,7 @@ func run_fx(d) -> void:
 	for e in d.data.effects:
 		if foe.hp <= 0 or pl.hp <= 0:
 			break
-		await e.apply(self, d, d.total())
+		await e.apply(self, d, e.size_for(d))
 		_cache.clear()
 		ui.refresh()
 		await ui.pause(0.16)
@@ -1180,6 +1203,7 @@ func _new_turn_state() -> void:
 	stats.turn += 1
 	history.next_turn()
 	bat.extra_draw = 0
+	_roll_volatile_pips()
 	energy = energy_cap()
 	played_this_turn = false
 	_weapon_turn()
@@ -1264,7 +1288,7 @@ func _take_domino(c: int, opts: Array) -> void:
 	if c >= 0:
 		var d = opts[c].copy()
 		collection.append(d)
-		reward_note = "New domino: %s %d|%d" % [d.data.title, d.a, d.b]
+		reward_note = "New domino: %s %s" % [d.data.title, d.pips_text()]
 	else:
 		reward_note = "You skipped the reward."
 

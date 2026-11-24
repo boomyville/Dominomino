@@ -257,7 +257,7 @@ func _tests() -> void:
 			a.occ[Vector2(0, 2)] = {"id": 2, "owner": "c", "pip": 5}
 			var sim := {"pl": a.pl.snapshot(), "foe": a.foe.snapshot()}
 			for e in d.data.effects:
-				e.preview(a, d, d.total(), sim)
+				e.preview(a, d, e.size_for(d), sim)
 			var predicted: int = a.foe.hp - sim.foe.hp
 			# now really play it: it leaves the hand and lands on the board
 			a.hand.remove_at(0)

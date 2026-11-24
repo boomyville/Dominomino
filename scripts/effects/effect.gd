@@ -2,10 +2,13 @@ extends RefCounted
 ## Base class for what a domino does when it is played. There is one child class per kind in this
 ## folder. Make a new effect by adding a child and registering it in effect_factory.gd.
 ##
-## The size of an effect comes from the domino's pip total s (0 to 12): bigger pips, bigger effect.
+## The size of an effect comes from a number s taken from the domino's pips (by default their total, 0 to 12):
+## bigger pips, bigger effect. "src" in the catalogue row picks the number: sum, max, min, diff or prod (see
+## pip_metric.gd), so a domino can deal damage equal to the product of its pips.
 ##   S = s*a + b      C = ceil(s/a) + b      F = floor(s/a) + b
 ##   K = b (constant) L = max(1, round(a*s + b))      N = the effect has no number
 
+const PipMetric = preload("res://scripts/pip_metric.gd")
 const DamageCmd = preload("res://scripts/cmd/damage_cmd.gd")
 const PowerCmd = preload("res://scripts/cmd/power_cmd.gd")
 const CreatureCmd = preload("res://scripts/cmd/creature_cmd.gd")
@@ -15,6 +18,7 @@ var mode := "N"
 var a := 0.0
 var b := 0.0
 var hits := 1
+var src := "sum"     # which pip number s is: sum, max, min, diff or prod
 
 
 func setup(row: Dictionary) -> void:
@@ -23,6 +27,7 @@ func setup(row: Dictionary) -> void:
 	a = float(row.get("a", 0))
 	b = float(row.get("b", 0))
 	hits = int(row.get("t", 1))
+	src = row.get("src", "sum")
 
 
 func has_number() -> bool:
@@ -42,6 +47,65 @@ func value(s: int) -> int:
 		"L":
 			return maxi(1, int(round(a * s + b)))
 	return 0
+
+
+## The number s for this domino's current pips.
+func size_for(domino) -> int:
+	return PipMetric.of(src, domino.a, domino.b)
+
+
+## The lowest and highest s the domino's pips can give while a half has no value yet (before the battle).
+func size_span(domino) -> Vector2i:
+	var lo := 1000
+	var hi := -1
+	for x in range(domino.specs[0].lo, domino.specs[0].hi + 1):
+		for y in range(domino.specs[1].lo, domino.specs[1].hi + 1):
+			var v := PipMetric.of(src, x, y)
+			lo = mini(lo, v)
+			hi = maxi(hi, v)
+	return Vector2i(lo, hi)
+
+
+## The line shown to the player. While the domino's pips are still a range ("1-6") the numbers in the line
+## are ranges too ("Deal 12-36 damage"). A note says where the number comes from when it is not the total.
+func shown_text(game, domino) -> String:
+	var t: String
+	if domino.unsettled():
+		var span := size_span(domino)
+		t = merge_range(text_for(game, domino, span.x), text_for(game, domino, span.y))
+	else:
+		t = text_for(game, domino, size_for(domino))
+	return t + PipMetric.note(src)
+
+
+## The number under a hand domino (a range while the pips are a range).
+func shown_caption(game, domino) -> String:
+	if domino.unsettled():
+		var span := size_span(domino)
+		return merge_range(caption_for(game, domino, span.x), caption_for(game, domino, span.y))
+	return caption_for(game, domino, size_for(domino))
+
+
+## Two versions of the same text with different numbers become one text with ranges: "Deal 5 damage" and
+## "Deal 9 damage" give "Deal 5-9 damage".
+static func merge_range(t_lo: String, t_hi: String) -> String:
+	if t_lo == t_hi:
+		return t_lo
+	var re := RegEx.new()
+	re.compile("\\d+")
+	var lo := re.search_all(t_lo)
+	var hi := re.search_all(t_hi)
+	if lo.size() != hi.size():
+		return "%s to %s" % [t_lo, t_hi]
+	var out := ""
+	var pos := 0
+	for i in lo.size():
+		out += t_lo.substr(pos, lo[i].get_start() - pos)
+		var x := lo[i].get_string()
+		var y := hi[i].get_string()
+		out += x if x == y else "%s-%s" % [x, y]
+		pos = lo[i].get_end()
+	return out + t_lo.substr(pos)
 
 
 ## Does this effect count as an attack? (Attacks tick Fury / Impair and use up Boost.)

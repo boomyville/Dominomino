@@ -16,6 +16,7 @@ var a := 0
 var b := 0
 var ang := 0.0
 var dot_tex: Texture2D = null
+var look: Array = []
 
 var _mode := ""
 var _from_fn := Callable()
@@ -42,6 +43,7 @@ func setup(d, tex: Texture2D) -> void:
 	a = d.a
 	b = d.b
 	ang = d.ang
+	look = DominoArt.sides(d)
 	dot_tex = tex
 
 
@@ -110,4 +112,4 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	DominoArt.draw_flat(self, SIZE / 2.0, ang, a, b, false, dot_tex)
+	DominoArt.draw_flat(self, SIZE / 2.0, ang, a, b, false, dot_tex, look)

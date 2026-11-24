@@ -28,6 +28,7 @@ const DominoText = preload("res://scripts/domino_text.gd")
 const Icons = preload("res://scripts/icons.gd")
 const Settings = preload("res://scripts/settings.gd")
 const FlyingDomino = preload("res://scripts/flying_domino.gd")
+const DominoArt = preload("res://scripts/domino_art.gd")
 const FLIGHT_SEC := 0.5        # one flight at medium speed (the setting scales it)
 const STAGGER_SEC := 0.08      # dominoes that arrive together leave this far apart
 const TAG_FADE := 0.3          # tags are this opaque while a domino is selected
@@ -481,7 +482,7 @@ func set_ghost(show_it: bool, d, pos: Vector2) -> void:
 	if show_it:
 		ghost.dot_tex = dot_tex
 		ghost.size = Vector2(56, 28)
-		ghost.set_domino(d.a, d.b, d.ang, true)
+		ghost.set_domino(d.a, d.b, d.ang, true, DominoArt.sides(d))
 		ghost.position = pos - ghost.size / 2.0
 
 

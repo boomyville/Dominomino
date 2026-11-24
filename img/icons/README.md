@@ -38,6 +38,7 @@ Run `godot --headless -s tools/export_icon_templates.gd` to write every built-in
 - `self_damage.png`
 - `shield.png`
 - `tutor.png`
+- `uptick.png`
 - `water.png`
 
 Kind -> name (what the code uses inside): `dmg`=`damage`, `hit`=`multi_hit`, `shield`=`shield`, `maxs`=`max_shield`, `draw`=`draw`, `discR`=`discard_random`, `discP`=`discard`, `tutor`=`tutor`, `power`=`power`, `boost`=`boost`, `heal`=`heal`, `rerollA`=`reroll_all`, `rerollP`=`reroll`, `fury`=`fury`, `impS`=`impair`, `impE`=`impair`, `selfdmg`=`self_damage`, `gen`=`generate`, `life`=`life`, `paylife`=`lose_life`, `atk`=`attack`, `lifeatk`=`attack_life`, `blk`=`block`, `discH`=`discard`, `junk`=`garbage`

@@ -32,7 +32,7 @@ extends "res://scripts/model.gd"
 ## (the Time Pendant: shows the Rewind turn button).
 ##
 ## A WEAPON is a relic with "weapon": true and no hook. It adds dominoes instead: each entry of "adds" is
-## {t: domino name, n: how many, a, b: pips (-1 = random), when: battle or turn, pos: stack, bottom, top or hand}.
+## {t: domino name, n: how many, when: battle or turn, pos: stack, bottom, top or hand}. The dominoes have the pips of their kind.
 ## You can carry many weapons but have only ONE equipped: it cannot be unequipped, only replaced.
 ## "once": true means it can fire at most once per turn (it asks the combat log, see combat_log.gd).
 ## Conditions that look at earlier turns also ask the combat log; relics keep no counters of their own.

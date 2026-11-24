@@ -14,17 +14,54 @@ static func dot(ci: CanvasItem, pos: Vector2, white: bool, dot_tex: Texture2D = 
 		ci.draw_texture(dot_tex, pos)
 
 
+## How each half of a domino should be marked, for draw_flat: [{label, mark}, {label, mark}].
+##   label  "1-6": the half has a range and no value yet (shop, rewards, your collection): the range is
+##          written instead of pips. "" when the half shows pips.
+##   mark   "u" for an unstable half (a small square in its corner) and "v" for a volatile half (a small
+##          lightning bolt), "" for a stable half.
+static func sides(d) -> Array:
+	var out := []
+	for i in 2:
+		var spec = d.specs[i]
+		var label := ""
+		var mark := ""
+		if spec.ranged():
+			mark = "v" if spec.is_volatile() else "u"
+			if d.unsettled():
+				label = spec.text()
+		out.append({"label": label, "mark": mark})
+	return out
+
+
 ## A flat 48 x 24 domino centred on c and turned by ang degrees.
 ## inverted = black body with white pips (selected / being dragged).
-static func draw_flat(ci: CanvasItem, c: Vector2, ang: float, a: int, b: int, inverted: bool, dot_tex: Texture2D = null) -> void:
+## look comes from sides(): a range written instead of pips, and the unstable / volatile marks.
+static func draw_flat(ci: CanvasItem, c: Vector2, ang: float, a: int, b: int, inverted: bool, dot_tex: Texture2D = null, look: Array = []) -> void:
 	ci.draw_set_transform(c, deg_to_rad(ang), Vector2.ONE)
 	var body := Color.BLACK if inverted else Color.WHITE
+	var ink := Color.WHITE if inverted else Color.BLACK
 	ci.draw_rect(Rect2(-24, -12, 48, 24), body)
 	ci.draw_rect(Rect2(-24, -12, 48, 24), Color.BLACK, false, 1.0)
-	ci.draw_line(Vector2(0, -12), Vector2(0, 12), Color.WHITE if inverted else Color.BLACK, 1.0)
-	_pips(ci, -24, a, inverted, dot_tex)
-	_pips(ci, 0, b, inverted, dot_tex)
+	ci.draw_line(Vector2(0, -12), Vector2(0, 12), ink, 1.0)
+	for i in 2:
+		var x0 := -24.0 + 24.0 * i
+		var n := a if i == 0 else b
+		var half: Dictionary = look[i] if look.size() == 2 else {"label": "", "mark": ""}
+		if half.label != "":
+			var font := ThemeDB.fallback_font
+			ci.draw_string(font, Vector2(x0, 4), half.label, HORIZONTAL_ALIGNMENT_CENTER, 24, 11, ink)
+		else:
+			_pips(ci, x0, n, inverted, dot_tex)
+		_mark(ci, x0, half.mark, ink)
 	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## The corner mark of an unstable (square) or volatile (lightning bolt) half.
+static func _mark(ci: CanvasItem, x0: float, mark: String, ink: Color) -> void:
+	if mark == "u":
+		ci.draw_rect(Rect2(x0 + 19, -11, 3, 3), ink, false, 1.0)
+	elif mark == "v":
+		ci.draw_polyline(PackedVector2Array([Vector2(x0 + 22, -11), Vector2(x0 + 19, -8), Vector2(x0 + 22, -8), Vector2(x0 + 19, -5)]), ink, 1.0)
 
 
 static func _pips(ci: CanvasItem, x0: float, n: int, inverted: bool, dot_tex: Texture2D) -> void:

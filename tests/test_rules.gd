@@ -98,14 +98,14 @@ func _initialize() -> void:
 
 func _tests() -> void:
 	# ---------- catalogue ----------
-	expect(Dominoes.TY.size() == 103, "102 dominoes (80 from the web build + 22 new) plus Garbage")
+	expect(Dominoes.TY.size() == 113 and Dominoes.TY[Dominoes.GARBAGE].n == "Garbage", "112 dominoes (80 from the web build + 32 new) plus Garbage")
 	var rc := {"c": 0, "u": 0, "r": 0, "w": 0, "g": 0}
 	var names := {}
 	for t in Dominoes.TY:
 		rc[t.r] += 1
 		names[t.n] = true
-	expect(rc == {"c": 38, "u": 37, "r": 22, "w": 5, "g": 1}, "rarity counts 38 common / 37 uncommon / 22 rare / 5 weapon %s" % rc)
-	expect(names.size() == 103, "all names are unique")
+	expect(rc == {"c": 41, "u": 39, "r": 27, "w": 5, "g": 1}, "rarity counts 41 common / 39 uncommon / 27 rare / 5 weapon %s" % rc)
+	expect(names.size() == 113, "all names are unique")
 	expect(cat[Dominoes.GARBAGE].title == "Garbage" and cat[Dominoes.GARBAGE].is_garbage(), "Garbage is the last entry")
 	# every effect size matches the web build exactly (fixture dumped from index.html)
 	var fixture = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/domino_values.json"))

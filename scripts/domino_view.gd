@@ -98,7 +98,7 @@ func _draw() -> void:
 	if domino == null or hidden_in_drag or locked:
 		return
 	var c := Vector2(size.x / 2.0, 30.0)
-	DominoArt.draw_flat(self, c, domino.ang, domino.a, domino.b, selected, dot_tex)
+	DominoArt.draw_flat(self, c, domino.ang, domino.a, domino.b, selected, dot_tex, DominoArt.sides(domino))
 	if playable:
 		var blink := int(Time.get_ticks_msec() / 250.0) % 2 == 0
 		var half := Vector2(28, 16) if posmod(int(domino.ang / 90.0), 2) == 0 else Vector2(16, 28)

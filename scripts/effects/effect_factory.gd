@@ -24,6 +24,7 @@ const KINDS := {
 	"paylife": preload("res://scripts/effects/effect_pay_life.gd"),
 	"pipdmg": preload("res://scripts/effects/effect_pip_damage.gd"),
 	"playedpips": preload("res://scripts/effects/effect_played_pips.gd"),
+	"uptick": preload("res://scripts/effects/effect_uptick.gd"),
 }
 
 

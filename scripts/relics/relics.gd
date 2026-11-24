@@ -96,20 +96,20 @@ const TABLE := [
 ## stack or your hand (see relic.gd). They are never unequipped, only replaced by another weapon.
 const WEAPONS := [
 	{"n": "Short Sword", "r": "c", "weapon": true, "starter": true,
-		"adds": [{"t": "Slash", "n": 3, "a": -1, "b": -1, "when": "battle", "pos": "stack"},
-				{"t": "Quick Strike", "n": 2, "a": 1, "b": 1, "when": "battle", "pos": "stack"}],
+		"adds": [{"t": "Slash", "n": 3, "when": "battle", "pos": "stack"},
+				{"t": "Quick Strike", "n": 2, "when": "battle", "pos": "stack"}],
 		"text": "Adds 3 Slash and 2 Quick Strike to your stack at the start of every battle."},
 	{"n": "Long Sword", "r": "u", "weapon": true,
-		"adds": [{"t": "Heavy Blade", "n": 2, "a": 4, "b": 3, "when": "battle", "pos": "bottom"}],
+		"adds": [{"t": "Heavy Blade", "n": 2, "when": "battle", "pos": "bottom"}],
 		"text": "Adds 2 Heavy Blade to the BOTTOM of your stack at the start of every battle."},
 	{"n": "Rapier", "r": "u", "weapon": true,
-		"adds": [{"t": "En Garde", "n": 1, "a": 2, "b": 2, "when": "turn", "pos": "hand"}],
+		"adds": [{"t": "En Garde", "n": 1, "when": "turn", "pos": "hand"}],
 		"text": "Adds an En Garde to your hand at the start of every turn."},
 	{"n": "Sawtooth Blade", "r": "u", "weapon": true,
-		"adds": [{"t": "Rip and Shred", "n": 2, "a": 2, "b": 1, "when": "battle", "pos": "stack"}],
+		"adds": [{"t": "Rip and Shred", "n": 2, "when": "battle", "pos": "stack"}],
 		"text": "Adds 2 Rip and Shred to your stack at the start of every battle."},
 	{"n": "Shining Blade", "r": "r", "weapon": true,
-		"adds": [{"t": "Cutting Edge", "n": 1, "a": 0, "b": 1, "when": "battle", "pos": "top"}],
+		"adds": [{"t": "Cutting Edge", "n": 1, "when": "battle", "pos": "top"}],
 		"text": "Adds a Cutting Edge to the TOP of your stack at the start of every battle."},
 ]
 

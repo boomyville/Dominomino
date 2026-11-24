@@ -76,6 +76,25 @@ The **Discard** button next to Stack opens the stack window with only the discar
 options. `Settings.speed_scale()` scales the flights and every wait in `main.pause()`. Medium is the original pacing and
 Instant skips flying and waiting. To animate something new, use `Settings.speed_scale()` (0 means do not animate).
 
+## Pips: stable, unstable and volatile
+Every kind of domino has two core pips, one for each half, written in `dominoes.gd` as `"p": [left, right]` (the pips are
+also what the domino costs in energy, so stronger dominoes have higher pips). Each pip has a stability (`pip_spec.gd`):
+- **stable** (nearly every pip): a number from 0 to 6.
+- **unstable**: `[lo, hi, "u"]`, a range such as 1-6. Rolled when the battle starts and kept all battle.
+- **volatile** (extremely rare): `[lo, hi, "v"]`. Rolled at the start of the battle and again at the start of every turn,
+  even in the stack and the discard pile (`Game._roll_volatile_pips`). Once played on the board its pips never change.
+
+A `Domino` holds both **core** pips (`specs`, from the kind) and **current** pips (`a`, `b`, what it shows and costs).
+Rerolls, Uptick and the volatile re-rolls only change the current pips, and a battle works on copies of your collection,
+so they all end with the battle. Dominoes in your collection, the shop and rewards show ranges (`1-6|6`, and effect
+numbers such as `Deal 9-36 damage`) until `roll_all` gives them values at the start of a battle (`Domino.unsettled()`).
+`Domino.shift_core()` changes the core pips for good (for later events). The rewind snapshot stores the current pips.
+
+An effect row can take its number from something other than the pip total with `"src"` (`pip_metric.gd`): `sum` (default),
+`max`, `min`, `diff` or `prod`. The effect text says where the number comes from. Add a pip-based effect by giving the row
+a `src`, for example Product Smash: `{"k": "dmg", "src": "prod", "m": "S", "a": 1, "b": 0}`.
+`tests/test_pips.gd` checks the rolls, the core/current split and the balance rules (rarer dominoes have higher pips).
+
 ## The screen
 Everything except the board is a scene made of containers, styled by one theme (`themes/main_theme.tres`):
 
@@ -144,6 +163,7 @@ godot --headless -s tests/test_features.gd   # relics, new dominoes, previews, i
 godot --headless -s tests/test_ui.gd         # tags, previews on the bars, relic bar and cards
 godot --headless -s tests/test_architecture.gd   # hook order, damage passes, history, commands, no direct writes
 godot --headless -s tests/test_animation.gd      # flying dominoes and locks, discard pile, speed setting
+godot --headless -s tests/test_pips.gd           # stable / unstable / volatile pips, core vs current, pip effects, balance
 ```
 
 ## Rewards, healing and the screen between battles

@@ -50,9 +50,14 @@ static func fill(rt: RichTextLabel, game, d, index: int = -1) -> void:
 	var def = d.data
 	rt.clear()
 	rt.push_bold()
-	rt.append_text("%s  [%d|%d]" % [def.title, d.a, d.b])
+	rt.append_text("%s  [%s]" % [def.title, d.pips_text()])
 	rt.pop()
-	rt.append_text("\n%s, pip total %d\n" % [def.rarity_name(), d.total()])
+	var span: Vector2i = d.total_span()
+	rt.append_text("\n%s, pip total %s\n" % [def.rarity_name(), str(span.x) if span.x == span.y else "%d-%d" % [span.x, span.y]])
+	if d.specs[0].is_volatile() or d.specs[1].is_volatile():
+		rt.append_text("[i]Volatile pips: rolled again at the start of every turn until played.[/i]\n")
+	elif d.has_ranged():
+		rt.append_text("[i]Unstable pips: rolled at the start of each battle.[/i]\n")
 	for entry in game.fx_entries(d):
 		icon_line(rt, entry.k, entry.text + ".")
 	if def.condition != null:
