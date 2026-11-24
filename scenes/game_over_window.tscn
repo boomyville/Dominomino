@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/game_over_window.gd" id="1"]
 
 [node name="GameOverWindow" type="PanelContainer"]
-custom_minimum_size = Vector2(380, 0)
+custom_minimum_size = Vector2(560, 0)
 layout_mode = 2
 script = ExtResource("1")
 
@@ -30,7 +30,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/h_separation = 24
 theme_override_constants/v_separation = 1
-columns = 2
+columns = 4
 
 [node name="NewGame" type="Button" parent="Margin/Box"]
 unique_name_in_owner = true

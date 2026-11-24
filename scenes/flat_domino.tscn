@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/flat_domino.gd" id="1"]
 
 [node name="FlatDomino" type="Control"]
-custom_minimum_size = Vector2(56, 28)
+custom_minimum_size = Vector2(60, 42)
 layout_mode = 3
 anchors_preset = 0
 mouse_filter = 2

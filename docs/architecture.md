@@ -95,6 +95,28 @@ An effect row can take its number from something other than the pip total with `
 a `src`, for example Product Smash: `{"k": "dmg", "src": "prod", "m": "S", "a": 1, "b": 0}`.
 `tests/test_pips.gd` checks the rolls, the core/current split and the balance rules (rarer dominoes have higher pips).
 
+## Levels: upgrades and downgrades
+A domino has a level: 1 is normal, 0 is downgraded, and it can go up to 4 (common), 3 (uncommon) or 2 (rare). Weapon dominoes
+and Garbage have one level. `Domino.level()`, `upgrade()`, `downgrade()` and `display_name()` ("Slash", "Slash-", "Slash+",
+"Slash++") work on the domino; the level is stored by pointing `Domino.data` at that level's `DominoData`
+(`DominoData.at_level(n)`, built the first time it is asked for and cached).
+
+`scripts/upgrades.gd` works out every level from the level 1 catalogue row, so no domino needs its levels written out:
+- **Upgrade** (level 2 and up): helpful numbers (damage, shield, draw, heal ...) rise by about a third of their value per level
+  (Slash 7, 9, 12, 14). From level 3 a small extra effect is added: draw 1, gain 1 max shield or heal 1. A domino with no
+  number to raise gets an extra effect on every level.
+- **Downgrade** (level 0), chosen from the domino's name so it never changes: usually lower numbers (about 6 in 10); otherwise a
+  drawback (lose 1 HP, discard 1 at random, 2 Impair on yourself, lose 1 energy: the effects `selfdmg`, `discR`, `impS`,
+  `energy`) or a restriction (needs 4 dominoes in hand `hand4`, ends your turn `endturn`, ephemeral, not on turn 1 `turn2`,
+  only with no shield `noShield`, only if you lost no HP this battle `noHpLost`).
+To change how levels work edit `Upgrades.level_row`; to hand-write a level for one domino, return your own row for it there.
+A battle copies your dominoes with their level, so all of this is part of a battle automatically.
+
+Every shop has one **upgrade** item (picked at random): choose a domino for 5 gems (`Game.buy(i, domino)`; the shop window
+shows the dominoes you can upgrade as they will look), a random domino for 3 gems, or two different random dominoes for 6.
+`Game.upgradable_dominoes()` lists what can still go up. A domino with a level other than 1 shows a small tag above its top-right
+corner (`+`, `++`, `+++`, or a red `-`), see `DominoArt.sides`.
+
 ## The screen
 Everything except the board is a scene made of containers, styled by one theme (`themes/main_theme.tres`):
 
@@ -164,6 +186,7 @@ godot --headless -s tests/test_ui.gd         # tags, previews on the bars, relic
 godot --headless -s tests/test_architecture.gd   # hook order, damage passes, history, commands, no direct writes
 godot --headless -s tests/test_animation.gd      # flying dominoes and locks, discard pile, speed setting
 godot --headless -s tests/test_pips.gd           # stable / unstable / volatile pips, core vs current, pip effects, balance
+godot --headless -s tests/test_upgrades.gd       # levels, downgrades, the shop upgrade, level tag, deselecting, game over table
 ```
 
 ## Rewards, healing and the screen between battles
@@ -197,4 +220,4 @@ elsewhere). A domino row with `"e": true` is ephemeral: unplayed copies go to th
 ## Gems, victory and the shop
 Start with 9 gems; a win gives 2-3 (+ Jeweler's Loupe). Order after a win: victory screen (`victory_window.gd`) -> reward
 -> screen between battles. After battle 1 (always) and otherwise 30% (`SHOP_CHANCE`) the last button is SHOP: 5 dominoes
-(one rare), 2 artifacts, 1 weapon (`generate_shop()`), prices: domino c 2-3 / u 4-5 / r 6-8, artifacts x2, weapons x1.5.
+(one rare), 2 artifacts, 1 weapon and 1 upgrade (`generate_shop()`), prices: domino c 2-3 / u 4-5 / r 6-8, artifacts x2, weapons x1.5.

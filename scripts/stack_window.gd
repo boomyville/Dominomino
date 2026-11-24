@@ -89,7 +89,7 @@ func _entry(e: Dictionary) -> Button:
 	row.add_child(flat)
 	flat.set_domino(d.a, d.b, 0.0, false, DominoArt.sides(d))
 	var l := Label.new()
-	l.text = "%s  %s" % [d.data.title, d.pips_text()]
+	l.text = "%s  %s" % [d.display_name(), d.pips_text()]
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(l)

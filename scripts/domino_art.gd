@@ -14,12 +14,13 @@ static func dot(ci: CanvasItem, pos: Vector2, white: bool, dot_tex: Texture2D = 
 		ci.draw_texture(dot_tex, pos)
 
 
-## How each half of a domino should be marked, for draw_flat: [{label, mark}, {label, mark}].
+## How a domino should be marked, for draw_flat: {halves: [{label, mark}, {label, mark}], tag}.
 ##   label  "1-6": the half has a range and no value yet (shop, rewards, your collection): the range is
 ##          written instead of pips. "" when the half shows pips.
 ##   mark   "u" for an unstable half (a small square in its corner) and "v" for a volatile half (a small
 ##          lightning bolt), "" for a stable half.
-static func sides(d) -> Array:
+##   tag    the upgrade level above the top-right corner: "+", "++", "+++" (upgraded) or "-" (downgraded)
+static func sides(d) -> Dictionary:
 	var out := []
 	for i in 2:
 		var spec = d.specs[i]
@@ -30,13 +31,14 @@ static func sides(d) -> Array:
 			if d.unsettled():
 				label = spec.text()
 		out.append({"label": label, "mark": mark})
-	return out
+	return {"halves": out, "tag": d.level_tag()}
 
 
 ## A flat 48 x 24 domino centred on c and turned by ang degrees.
 ## inverted = black body with white pips (selected / being dragged).
-## look comes from sides(): a range written instead of pips, and the unstable / volatile marks.
-static func draw_flat(ci: CanvasItem, c: Vector2, ang: float, a: int, b: int, inverted: bool, dot_tex: Texture2D = null, look: Array = []) -> void:
+## look comes from sides(): a range written instead of pips, the unstable / volatile marks and the level tag.
+static func draw_flat(ci: CanvasItem, c: Vector2, ang: float, a: int, b: int, inverted: bool, dot_tex: Texture2D = null, look: Dictionary = {}) -> void:
+	var halves: Array = look.get("halves", [])
 	ci.draw_set_transform(c, deg_to_rad(ang), Vector2.ONE)
 	var body := Color.BLACK if inverted else Color.WHITE
 	var ink := Color.WHITE if inverted else Color.BLACK
@@ -46,7 +48,7 @@ static func draw_flat(ci: CanvasItem, c: Vector2, ang: float, a: int, b: int, in
 	for i in 2:
 		var x0 := -24.0 + 24.0 * i
 		var n := a if i == 0 else b
-		var half: Dictionary = look[i] if look.size() == 2 else {"label": "", "mark": ""}
+		var half: Dictionary = halves[i] if halves.size() == 2 else {"label": "", "mark": ""}
 		if half.label != "":
 			var font := ThemeDB.fallback_font
 			ci.draw_string(font, Vector2(x0, 4), half.label, HORIZONTAL_ALIGNMENT_CENTER, 24, 11, ink)
@@ -54,6 +56,13 @@ static func draw_flat(ci: CanvasItem, c: Vector2, ang: float, a: int, b: int, in
 			_pips(ci, x0, n, inverted, dot_tex)
 		_mark(ci, x0, half.mark, ink)
 	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var tag: String = look.get("tag", "")
+	if tag != "":
+		var font := ThemeDB.fallback_font
+		var half_size := Vector2(12, 24) if posmod(roundi(ang / 90.0), 2) == 1 else Vector2(24, 12)
+		var w := font.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+		ci.draw_string(font, Vector2(c.x + half_size.x - w, c.y - half_size.y - 5), tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 11,
+				Color(0.7, 0.0, 0.0) if tag == "-" else Color.BLACK)
 
 
 ## The corner mark of an unstable (square) or volatile (lightning bolt) half.

@@ -16,7 +16,7 @@ var a := 0
 var b := 0
 var ang := 0.0
 var dot_tex: Texture2D = null
-var look: Array = []
+var look: Dictionary = {}
 
 var _mode := ""
 var _from_fn := Callable()

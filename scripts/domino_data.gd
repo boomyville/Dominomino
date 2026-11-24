@@ -9,6 +9,13 @@ var condition = null       # a Condition, or null when it can always be played
 var effects := []          # Effect objects, played in order
 var ephemeral := false     # if it is still in your hand when you end the turn, it goes to the discard pile
 var pips := []             # [PipSpec, PipSpec]: the core pips of each half (stable, unstable or volatile)
+var row := {}              # the catalogue row this was built from
+var level := 1             # upgrade level: 1 is the normal domino, 0 is downgraded, more is upgraded
+var base = null            # the level 1 DominoData of this kind (null on the level 1 one itself)
+var _levels := {}          # level -> DominoData, built the first time it is needed (level 1 only)
+
+## The highest level of each rarity (weapons and Garbage cannot be upgraded). Level 0 is the downgrade.
+const MAX_LEVEL := {"c": 4, "u": 3, "r": 2}
 
 
 func has_attack() -> bool:
@@ -25,6 +32,24 @@ func pip_stability() -> Array:
 
 func has_ranged_pips() -> bool:
 	return pips.size() == 2 and (pips[0].ranged() or pips[1].ranged())
+
+
+func max_level() -> int:
+	return MAX_LEVEL.get(rarity, 1)
+
+
+## The same kind of domino at another level (0 to max_level): its own effects, condition and ephemeral
+## flag, see upgrades.gd. Level 1 is the catalogue entry itself.
+func at_level(n: int):
+	var b = base if base != null else self
+	if n == 1 or b.max_level() <= 1:
+		return b
+	n = clampi(n, 0, b.max_level())
+	if n == 1:
+		return b
+	if not b._levels.has(n):
+		b._levels[n] = load("res://scripts/upgrades.gd").variant(b, n)
+	return b._levels[n]
 
 
 func is_garbage() -> bool:

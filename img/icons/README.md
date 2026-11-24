@@ -18,6 +18,7 @@ Run `godot --headless -s tools/export_icon_templates.gd` to write every built-in
 - `discard_random.png`
 - `draw.png`
 - `earth.png`
+- `end_turn.png`
 - `energy.png`
 - `fire.png`
 - `fury.png`

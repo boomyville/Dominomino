@@ -869,16 +869,18 @@ func _tests() -> void:
 	var vs: Dictionary = g.victory_summary
 	expect(g.ui.log.has("victory") and vs.gems >= 2 and vs.gems <= 3 and g.gems == 9 + vs.gems, "victory: 2-3 gems (+%d, now %d)" % [vs.gems, g.gems])
 	expect(vs.dealt > 0 and vs.lost == 0 and vs.battle == 1, "the victory summary has the damage dealt and the HP lost (%s)" % [vs])
-	expect(g.shop_pending and g.shop.size() == 8, "after the first battle there is always a shop with 8 things")
-	var kinds := {"domino": 0, "relic": 0, "weapon": 0}
+	expect(g.shop_pending and g.shop.size() == 9, "after the first battle there is always a shop with 9 things")
+	var kinds := {"domino": 0, "relic": 0, "weapon": 0, "upgrade": 0}
 	var rare_domino := 0
 	for it in g.shop:
 		kinds[it.kind] += 1
 		if it.kind == "domino" and it.item.data.rarity == "r":
 			rare_domino += 1
-	expect(kinds == {"domino": 5, "relic": 2, "weapon": 1} and rare_domino >= 1, "the shop sells 5 dominoes (at least 1 rare), 2 artifacts and 1 weapon")
+	expect(kinds == {"domino": 5, "relic": 2, "weapon": 1, "upgrade": 1} and rare_domino >= 1, "the shop sells 5 dominoes (at least 1 rare), 2 artifacts, 1 weapon and 1 upgrade")
 	var price_ok := true
 	for it in g.shop:
+		if it.kind == "upgrade":
+			continue
 		var r: String = it.item.data.rarity if it.kind == "domino" else it.item.rarity
 		var lo := 0
 		var hi := 0

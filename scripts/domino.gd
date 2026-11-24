@@ -39,6 +39,52 @@ func _init(domino_data = null, pips_a: int = -1, pips_b: int = -1) -> void:
 	b = specs[1].lo
 
 
+## Upgrade levels. The kind says what each level does (see upgrades.gd); the domino remembers its level by
+## pointing at that level's DominoData. Level 1 is normal, 0 is downgraded. The highest level depends on the
+## rarity: common 4, uncommon 3, rare 2. Weapons and Garbage have one level.
+func level() -> int:
+	return data.level if data != null else 1
+
+
+func max_level() -> int:
+	return data.max_level() if data != null else 1
+
+
+func can_upgrade() -> bool:
+	return data != null and data.level < data.max_level()
+
+
+func can_downgrade() -> bool:
+	return data != null and data.max_level() > 1 and data.level > 0
+
+
+func upgrade() -> bool:
+	if not can_upgrade():
+		return false
+	data = data.at_level(data.level + 1)
+	return true
+
+
+func downgrade() -> bool:
+	if not can_downgrade():
+		return false
+	data = data.at_level(data.level - 1)
+	return true
+
+
+## The small mark for the level: "" at level 1, "-" downgraded, "+" at level 2, "++" at level 3, "+++" at level 4.
+func level_tag() -> String:
+	var lv := level()
+	if lv == 0:
+		return "-"
+	return "+".repeat(lv - 1)
+
+
+## The name with its level: "Slash", "Slash-" (downgraded), "Slash+", "Slash++" ...
+func display_name() -> String:
+	return data.title + level_tag()
+
+
 ## Both halves added together: what the domino costs to play (and the number most effects start from).
 func total() -> int:
 	return a + b

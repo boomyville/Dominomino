@@ -399,16 +399,16 @@ func test_text_and_art() -> void:
 	expect(d.unsettled() and d.pips_text() == "3-6|3-6", "before a battle the pips read as ranges")
 	var lines: Array = g.fx_lines(d)
 	expect(lines[0] == "Deal 9-36 damage (the product of the pips)", "so does the text: '%s'" % lines[0])
-	var look: Array = DominoArt.sides(d)
-	expect(look[0].label == "3-6" and look[0].mark == "v" and look[1].mark == "v", "the picture shows the ranges and a volatile mark")
+	var look: Dictionary = DominoArt.sides(d)
+	expect(look.halves[0].label == "3-6" and look.halves[0].mark == "v" and look.halves[1].mark == "v", "the picture shows the ranges and a volatile mark")
 	d.roll_all(g.rng)
 	d.a = 4
 	d.b = 5
 	expect(not d.unsettled() and d.pips_text() == "4|5" and g.fx_lines(d)[0] == "Deal 20 damage (the product of the pips)", "once rolled the real numbers show")
 	look = DominoArt.sides(d)
-	expect(look[0].label == "" and look[0].mark == "v", "a rolled volatile half shows pips and keeps its mark")
+	expect(look.halves[0].label == "" and look.halves[0].mark == "v", "a rolled volatile half shows pips and keeps its mark")
 	var chaos = make(g, "Chaos Force")
-	expect(DominoArt.sides(chaos)[0].mark == "u" and DominoArt.sides(chaos)[1].mark == "", "unstable halves get a different mark; stable halves none")
+	expect(DominoArt.sides(chaos).halves[0].mark == "u" and DominoArt.sides(chaos).halves[1].mark == "", "unstable halves get a different mark; stable halves none")
 	g.hand = [make(g, "Wild Swing")]
 	expect(g.caps(0)[0].num == "3-11", "the number under a hand domino is a range too while unrolled (%s)" % g.caps(0)[0].num)
 	var slash = make(g, "Slash")

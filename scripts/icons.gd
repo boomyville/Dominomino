@@ -40,6 +40,7 @@ const MOUNTAIN := ["........", "...##...", "..####..", "..####.#", ".######.", "
 const MOON := ["..####..", ".###....", "####....", "####....", "####....", ".###....", "..####..", "........"]
 const GEM := ["........", "...##...", "..####..", ".######.", "..####..", "...##...", "........", "........"]
 const GEM_OUTLINE := ["........", "...##...", "..#..#..", ".#....#.", "..#..#..", "...##...", "........", "........"]
+const STOP := [".######.", "########", "########", "########", "########", "########", "########", ".######."]
 const UP := ["...##...", "..####..", ".######.", "########", "...##...", "...##...", "...##...", "........"]
 const GEM_RARE := ["...##...", "..####..", ".######.", "########", ".######.", "..####..", "...##...", "........"]
 
@@ -48,7 +49,7 @@ const PIXEL := {
 	"damage": SWORD, "multi_hit": SWORD, "shield": SHIELD, "max_shield": MAX_SHIELD, "draw": CARD,
 	"discard_random": TRASH, "discard": TRASH, "tutor": LENS, "power": POWER, "boost": BOLT, "heal": HEART,
 	"reroll_all": DIE, "reroll": DIE, "fury": FLAME, "impair": DOWN, "self_damage": DROP, "generate": PLUS,
-	"life": HEART_LINE, "lose_life": CRACKED, "energy": ENERGY, "uptick": UP,
+	"life": HEART_LINE, "lose_life": CRACKED, "energy": ENERGY, "uptick": UP, "end_turn": STOP,
 	# enemy intents
 	"attack": SWORD, "attack_life": SWORD, "block": SHIELD, "mill": CARD, "garbage": TRASH,
 	# pip elements

@@ -382,6 +382,9 @@ func _hit_pending(pos: Vector2) -> bool:
 func _press(pos: Vector2) -> void:
 	if pending != null and _hit_pending(pos):
 		pdrag = {"start": pos, "g0": _to_grid(pos), "x": pending.x, "y": pending.y, "moved": false}
+	elif sel >= 0 and not hud.tray.get_global_rect().has_point(pos):
+		sel = -1                  # a click anywhere but the hand deselects
+		_refresh_ui()
 
 
 func _motion(pos: Vector2) -> void:

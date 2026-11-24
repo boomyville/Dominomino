@@ -20,6 +20,7 @@ extends RefCounted
 ## Effect kinds:
 ##   dmg hit(t hits)  shield  maxs (max shield)  draw  discR (discard random)  discP (discard of your choice)
 ##   tutor (find in stack)  power  boost  heal  rerollA (all in hand)  rerollP (one of your choice)
+##   energy (lose energy)  endturn (playing it ends your turn)   [these two are mostly used by downgraded dominoes]
 ##   uptick (+1 to both pips of a domino in your hand, max 6, until the battle ends)
 ##   fury  impS (impair yourself)  impE (impair the enemy)  selfdmg (lose HP)  gen (add random dominoes to stack)  life
 ##   playedpips (damage = pips of every domino you played)  paylife (lose a life, pair with condition "lives2")  pipdmg (damage per pip of one number on the board / in hand)
@@ -159,19 +160,24 @@ const ConditionFactory = preload("res://scripts/conditions/condition_factory.gd"
 static func build() -> Array:
 	var out := []
 	for i in TY.size():
-		var row: Dictionary = TY[i]
-		var d = DominoData.new()
-		d.id = i
-		d.title = row.n
-		d.rarity = row.r
-		d.condition = ConditionFactory.make(row.c)
-		d.ephemeral = row.get("e", false)
-		var p: Array = row.get("p", [0, 0])
-		d.pips = [PipSpec.parse(p[0]), PipSpec.parse(p[1])]
-		for e in row.fx:
-			d.effects.append(EffectFactory.make(e))
-		out.append(d)
+		out.append(make_data(i, TY[i]))
 	return out
+
+
+## One DominoData from a row. upgrades.gd uses it for the other levels of a domino (the row is a changed copy).
+static func make_data(i: int, row: Dictionary):
+	var d = DominoData.new()
+	d.id = i
+	d.row = row
+	d.title = row.n
+	d.rarity = row.r
+	d.condition = ConditionFactory.make(row.c)
+	d.ephemeral = row.get("e", false)
+	var p: Array = row.get("p", [0, 0])
+	d.pips = [PipSpec.parse(p[0]), PipSpec.parse(p[1])]
+	for e in row.fx:
+		d.effects.append(EffectFactory.make(e))
+	return d
 
 
 ## A random kind of domino (never Garbage or a weapon domino): 60% common, 30% uncommon, 10% rare.

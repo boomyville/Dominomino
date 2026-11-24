@@ -25,6 +25,8 @@ const KINDS := {
 	"pipdmg": preload("res://scripts/effects/effect_pip_damage.gd"),
 	"playedpips": preload("res://scripts/effects/effect_played_pips.gd"),
 	"uptick": preload("res://scripts/effects/effect_uptick.gd"),
+	"energy": preload("res://scripts/effects/effect_lose_energy.gd"),
+	"endturn": preload("res://scripts/effects/effect_end_turn.gd"),
 }
 
 

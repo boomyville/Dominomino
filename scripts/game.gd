@@ -62,7 +62,9 @@ var battle_deck := []     # every domino this battle started with (the stack win
 var weapon = null         # the ONE equipped weapon (a Relic with weapon true); it cannot be unequipped, only replaced
 var stored_weapons := []  # weapons you own but do not use
 var gems := START_GEMS
-var shop := []            # [{kind: domino | relic | weapon, item, price, sold}] while a shop is open
+var shop := []            # [{kind: domino | relic | weapon | upgrade, item, price, sold}] while a shop is open
+var shop_note := ""       # what the last purchase did (for the shop window)
+var end_turn_after_play := false   # a domino that "ends your turn" sets this; play_domino then ends the turn
 var shop_pending := false # the screen between battles offers a shop instead of Next battle
 var victory_summary := {} # {dealt, lost, gems, battle} for the victory screen
 var battle_snap := {}     # the start of this battle (for Restart battle)
@@ -102,6 +104,7 @@ func new_game(seed_override: int = -1) -> void:
 	stored_weapons.clear()
 	gems = START_GEMS
 	shop = []
+	shop_note = ""
 	shop_pending = false
 	victory_summary = {}
 	battle_snap = {}
@@ -526,11 +529,23 @@ func shop_price(i: int) -> int:
 	return maxi(1, shop[i].price - relic_sum("shop_discount"))
 
 
-func buy(i: int) -> bool:
+## Can shop item i be bought right now? (An upgrade also needs a domino that is not at its top level.)
+func can_buy(i: int) -> bool:
 	if i < 0 or i >= shop.size() or shop[i].sold or gems < shop_price(i):
+		return false
+	return shop[i].kind != "upgrade" or not upgradable_dominoes().is_empty()
+
+
+## Buy shop item i. An upgrade of mode "pick" needs target: the domino in your collection to upgrade.
+## Nothing is paid when this returns false.
+func buy(i: int, target = null) -> bool:
+	if not can_buy(i):
+		return false
+	if shop[i].kind == "upgrade" and shop[i].mode == "pick" and (target == null or not collection.has(target) or not target.can_upgrade()):
 		return false
 	gems -= shop_price(i)
 	shop[i].sold = true
+	shop_note = ""
 	match shop[i].kind:
 		"domino":
 			collection.append(shop[i].item)
@@ -538,7 +553,41 @@ func buy(i: int) -> bool:
 			add_relic(shop[i].item)
 		"weapon":
 			stored_weapons.append(shop[i].item)
+		"upgrade":
+			_buy_upgrade(shop[i].mode, target)
 	return true
+
+
+## The dominoes in your collection that can still go up a level.
+func upgradable_dominoes() -> Array:
+	return collection.filter(func(d): return d.can_upgrade())
+
+
+## Give a level to the chosen domino ("pick"), a random one ("random") or two different random ones ("random2").
+func _buy_upgrade(mode: String, target) -> void:
+	var chosen := []
+	if mode == "pick":
+		chosen = [target]
+	else:
+		var pool := upgradable_dominoes()
+		rshuffle(pool)
+		chosen = pool.slice(0, 1 if mode == "random" else 2)
+	var lines := []
+	for d in chosen:
+		var before: String = d.display_name()
+		d.upgrade()
+		lines.append("%s is now %s" % [before, d.display_name()])
+	shop_note = "Upgraded: " + ", ".join(lines)
+
+
+## The upgrade in every shop is one of these, chosen at random.
+const UPGRADE_MODES := ["pick", "random", "random2"]
+const UPGRADE_PRICE := {"pick": 5, "random": 3, "random2": 6}
+const UPGRADE_TEXT := {
+	"pick": "[b]Upgrade a domino[/b]\nChoose any domino you own that is not at its top level. It goes up a level.",
+	"random": "[b]Upgrade a random domino[/b]\nOne domino you own, picked at random, goes up a level.",
+	"random2": "[b]Upgrade 2 random dominoes[/b]\nTwo different dominoes you own, picked at random, each go up a level.",
+}
 
 
 ## What a rarity costs as a domino: common 2-3 gems, uncommon 4-5, rare 6-8.
@@ -567,6 +616,8 @@ func generate_shop() -> Array:
 		items.append({"kind": "relic", "item": r, "price": 2 * _domino_price(r.rarity), "sold": false})
 	for w in Relics.roll_weapons(relic_ids(), 1, rng):
 		items.append({"kind": "weapon", "item": w, "price": roundi(1.5 * _domino_price(w.rarity)), "sold": false})
+	var mode: String = UPGRADE_MODES[rng.randi() % UPGRADE_MODES.size()]
+	items.append({"kind": "upgrade", "mode": mode, "item": {"text": UPGRADE_TEXT[mode]}, "price": UPGRADE_PRICE[mode], "sold": false})
 	return items
 
 
@@ -684,6 +735,12 @@ func energy_cap() -> int:
 func gain_energy(n: int) -> void:
 	energy += n
 	ui.float_text("p", "+%d energy" % n)
+
+
+func lose_energy(n: int) -> void:
+	energy = maxi(0, energy - n)
+	_cache.clear()
+	ui.float_text("p", "-%d energy" % n)
 
 
 func gain_shield(n: int) -> void:
@@ -1105,6 +1162,11 @@ func play_domino(m: Dictionary) -> void:
 	if foe.hp <= 0:
 		await battle_won()
 		return
+	if end_turn_after_play:       # the domino said "ends your turn"
+		end_turn_after_play = false
+		ui.refresh()
+		await end_turn()
+		return
 	ui.refresh()
 
 
@@ -1275,6 +1337,7 @@ func _begin_reward() -> Array:
 	pl = fresh_player()      # statuses and shield are cleared, HP is kept
 	shop_pending = battle_no == 1 or rng.randf() < SHOP_CHANCE
 	shop = generate_shop() if shop_pending else []
+	shop_note = ""
 	ui.refresh()
 	var opts := []
 	for i in 3 + relic_sum("rewards"):
@@ -1288,7 +1351,7 @@ func _take_domino(c: int, opts: Array) -> void:
 	if c >= 0:
 		var d = opts[c].copy()
 		collection.append(d)
-		reward_note = "New domino: %s %s" % [d.data.title, d.pips_text()]
+		reward_note = "New domino: %s %s" % [d.display_name(), d.pips_text()]
 	else:
 		reward_note = "You skipped the reward."
 
