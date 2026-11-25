@@ -27,10 +27,16 @@ extends "res://scripts/model.gd"
 ## Actions ("do" in the row, "v" is the amount):
 ##   energy  shield  max_shield  draw  fury  power  boost  impair (on the enemy)  heal  damage (to the enemy)
 ##   restack (shuffle v random discarded dominoes back into the stack)  max_hp  life
-## Passive keys: max_energy (energy you get each turn), max_hp (more max HP), rewards (extra dominoes offered
+##   stalwart (v turns of doubled shields)  regenerative (v turns of doubled healing)
+##   revive (gain v lives and heal half your max HP; for the "death" hook)
+##   death     on_death          you are about to lose (HP 0 or no lives): a chance to be saved
+## A row with "breaks": true crumbles after it has done its action once (it leaves your inventory for good).
+## Passive keys: ignore_hand (every "you must hold N dominoes" condition on your dominoes is ignored), max_energy (energy you get each turn), max_hp (more max HP), rewards (extra dominoes offered
 ## after a battle), gems (extra gems after a battle), shop_discount (gems off every shop price) and rewind
 ## (the Time Pendant: shows the Rewind turn button).
 ##
+## A WEAPON also has a LEVEL, like a domino: it can go up to level 4 (common), 3 (uncommon) or 2 (rare), or down to 0.
+## The dominoes it adds are made at the weapon's level (as far as they can go), so upgrading the weapon upgrades them.
 ## A WEAPON is a relic with "weapon": true and no hook. It adds dominoes instead: each entry of "adds" is
 ## {t: domino name, n: how many, when: battle or turn, pos: stack, bottom, top or hand}. The dominoes have the pips of their kind.
 ## You can carry many weapons but have only ONE equipped: it cannot be unequipped, only replaced.
@@ -40,6 +46,7 @@ extends "res://scripts/model.gd"
 const CreatureCmd = preload("res://scripts/cmd/creature_cmd.gd")
 const DamageCmd = preload("res://scripts/cmd/damage_cmd.gd")
 const PowerCmd = preload("res://scripts/cmd/power_cmd.gd")
+const DominoData = preload("res://scripts/domino_data.gd")
 
 var title := ""
 var rarity := "c"
@@ -53,6 +60,8 @@ var once := false
 var weapon := false
 var starter := false      # you start the run with it: never offered as a reward or sold
 var adds := []
+var breaks := false       # it crumbles after it has done its action once
+var level := 1            # weapons only: 1 is normal, 0 downgraded, up to 4 / 3 / 2 for common / uncommon / rare
 
 const RARITY_NAMES := {"c": "Common", "u": "Uncommon", "r": "Rare"}
 
@@ -72,6 +81,7 @@ func setup(row: Dictionary, icons) -> void:
 	hook = row.get("on", "")
 	act = row.get("do", "")
 	priority = int(row.get("prio", 0))
+	breaks = bool(row.get("breaks", false))
 
 
 func is_relic() -> bool:
@@ -84,6 +94,47 @@ func rarity_name() -> String:
 
 func kind_name() -> String:
 	return "weapon" if weapon else "artifact"
+
+
+## Weapons only: the highest level (4 common, 3 uncommon, 2 rare). Artifacts have one level.
+func max_level() -> int:
+	return DominoData.MAX_LEVEL.get(rarity, 1) if weapon else 1
+
+
+func can_upgrade() -> bool:
+	return weapon and level < max_level()
+
+
+func can_downgrade() -> bool:
+	return weapon and level > 0
+
+
+func upgrade() -> bool:
+	if not can_upgrade():
+		return false
+	level += 1
+	return true
+
+
+func downgrade() -> bool:
+	if not can_downgrade():
+		return false
+	level -= 1
+	return true
+
+
+## "Short Sword", "Short Sword+" (level 2), "Short Sword-" (level 0) ...
+func display_name() -> String:
+	if not weapon or level == 1:
+		return title
+	return title + ("-" if level == 0 else "+".repeat(level - 1))
+
+
+## "Level 2 of 4: the dominoes it adds are level 2." (weapons only)
+func level_line() -> String:
+	if not weapon:
+		return ""
+	return "Level %d of %d: the dominoes it adds are level %d." % [level, max_level(), level]
 
 
 ## The description without :icon: tokens (for tooltips and toasts).
@@ -122,6 +173,10 @@ func on_victory(game, ctx: Dictionary) -> void:
 	trigger(game, "victory", ctx)
 
 
+func on_death(game, ctx: Dictionary) -> void:
+	trigger(game, "death", ctx)
+
+
 ## Does nothing unless this is the right hook and the condition holds.
 func trigger(game, which: String, ctx: Dictionary = {}) -> void:
 	if which != hook or hook == "passive":
@@ -133,6 +188,8 @@ func trigger(game, which: String, ctx: Dictionary = {}) -> void:
 			return
 		game.history.add("relic_fired", {"relic": id})
 	_do(game)
+	if breaks:
+		game.break_relic(self)
 
 
 func _holds(game, ctx: Dictionary) -> bool:
@@ -203,5 +260,12 @@ func _do(game) -> void:
 			CreatureCmd.gain_max_hp(game, game.pl, amount)
 		"life":
 			game.gain_life(amount)
+		"stalwart":
+			PowerCmd.apply(game, game.pl, "stalwart", amount)
+		"regenerative":
+			PowerCmd.apply(game, game.pl, "regenerative", amount)
+		"revive":
+			game.gain_life(amount)
+			CreatureCmd.heal(game, game.pl, ceili(game.pl.max_hp / 2.0))
 		_:
 			push_error("unknown relic action: " + act)

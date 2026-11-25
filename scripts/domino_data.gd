@@ -14,8 +14,9 @@ var level := 1             # upgrade level: 1 is the normal domino, 0 is downgra
 var base = null            # the level 1 DominoData of this kind (null on the level 1 one itself)
 var _levels := {}          # level -> DominoData, built the first time it is needed (level 1 only)
 
-## The highest level of each rarity (weapons and Garbage cannot be upgraded). Level 0 is the downgrade.
-const MAX_LEVEL := {"c": 4, "u": 3, "r": 2}
+## The highest level of each rarity (Garbage has one level). Level 0 is the downgrade. Weapon dominoes (w) are not
+## upgraded on their own: they take the level of the weapon that adds them.
+const MAX_LEVEL := {"c": 4, "u": 3, "r": 2, "w": 4}
 
 
 func has_attack() -> bool:

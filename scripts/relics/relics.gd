@@ -1,7 +1,8 @@
 extends RefCounted
-## The relic catalogue: 30 relics. Edit the table to rebalance or add one (see relic.gd for what
+## The relic catalogue: 43 relics. Edit the table to rebalance or add one (see relic.gd for what
 ## "on", "if" and "do" can be). Each row: {n: name, r: rarity (c, u, r), on: hook, if: condition,
-## do: action, v: amount, pip: pip number for the "pip" condition, once: once per turn, text}.
+## do: action, v: amount, pip: pip number for the "pip" condition, once: once per turn, breaks: true to crumble
+## after doing its action once, text}.
 ## starter: true means you begin the run with it (it is never offered or sold).
 ## WEAPONS (below) are relics that add dominoes; you have exactly one equipped.
 ## In text, :name: shows that icon (:energy: :shield: :fury: :power: :impair: :heal: :draw: ...).
@@ -90,6 +91,22 @@ const TABLE := [
 		"text": "Gain 1 more gem after every battle."},
 	{"n": "Haggler's Tongue", "r": "u", "on": "passive", "do": "shop_discount", "v": 1,
 		"text": "Everything in the shop costs 1 gem less (never below 1)."},
+	# ---- rule benders and doubled turns
+	{"n": "Loose Grip", "r": "u", "on": "passive", "do": "ignore_hand", "v": 1,
+		"text": "Ignore every \"you must hold N dominoes\" condition on your dominoes."},
+	{"n": "Stalwart Charm", "r": "u", "on": "battle", "do": "stalwart", "v": 1,
+		"text": "Start every battle with 1 Stalwart: every :shield: you gain is doubled until the end of your first turn."},
+	{"n": "Phial of Renewal", "r": "u", "on": "battle", "do": "regenerative", "v": 1,
+		"text": "Start every battle with 1 Regenerative: all :heal: you get is doubled until the end of your first turn."},
+	# ---- artifacts that break: they do their job once and are gone
+	{"n": "Lizard Tail", "r": "r", "on": "death", "do": "revive", "v": 3, "breaks": true,
+		"text": "Does nothing until you would lose the run. Then gain 3 lives, heal half your max HP, and the Lizard Tail crumbles."},
+	{"n": "Last Meal", "r": "c", "on": "turn", "if": "halfHp", "do": "heal", "v": 8, "breaks": true,
+		"text": "At the start of your turn, if you have half your HP or less, heal 8 HP. Then it is eaten and gone."},
+	{"n": "Emergency Bulwark", "r": "c", "on": "battle", "do": "shield", "v": 15, "breaks": true,
+		"text": "Gain 15 :shield: at the start of the next battle. Then it falls apart."},
+	{"n": "Fragile Gauntlet", "r": "u", "on": "battle", "do": "power", "v": 3, "breaks": true,
+		"text": "Start the next battle with 3 :power:. Then the gauntlet shatters."},
 ]
 
 ## The weapons. You own as many as you find but only ONE is equipped: it adds its dominoes to the

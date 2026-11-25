@@ -24,7 +24,7 @@ var owner:
 	set(value):
 		_owner_ref = weakref(value) if value != null else null
 
-const HOOKS := ["on_battle_start", "on_turn_start", "on_turn_end", "on_domino_played", "on_victory",
+const HOOKS := ["on_battle_start", "on_turn_start", "on_turn_end", "on_domino_played", "on_victory", "on_death",
 		"after_attack", "after_card_drawn", "after_damage"]
 
 
@@ -50,6 +50,11 @@ func on_domino_played(_game, _ctx: Dictionary) -> void:
 
 ## You won the battle (before the rewards).
 func on_victory(_game, _ctx: Dictionary) -> void:
+	pass
+
+
+## You are about to lose the run (HP 0 or no lives left). Fix it (gain lives, heal) to be saved.
+func on_death(_game, _ctx: Dictionary) -> void:
 	pass
 
 
@@ -84,6 +89,16 @@ func modify_damage_multiplicative(_n: int, _ctx: Dictionary) -> float:
 ## matters, so it runs by priority.
 func modify_damage_cap(n: int, _ctx: Dictionary) -> int:
 	return n
+
+
+## Shield being gained (ctx: target). Return a factor: 2.0 doubles it. Factors are multiplied.
+func modify_shield_multiplicative(_n: int, _ctx: Dictionary) -> float:
+	return 1.0
+
+
+## HP being healed (ctx: target). Same idea.
+func modify_heal_multiplicative(_n: int, _ctx: Dictionary) -> float:
+	return 1.0
 
 
 ## Models sorted by priority, then by their place in the list. (Godot's sort is not stable, so the

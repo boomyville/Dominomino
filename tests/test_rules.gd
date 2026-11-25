@@ -107,7 +107,7 @@ func _tests() -> void:
 	expect(rc == {"c": 41, "u": 39, "r": 27, "w": 5, "g": 1}, "rarity counts 41 common / 39 uncommon / 27 rare / 5 weapon %s" % rc)
 	expect(names.size() == 113, "all names are unique")
 	expect(cat[Dominoes.GARBAGE].title == "Garbage" and cat[Dominoes.GARBAGE].is_garbage(), "Garbage is the last entry")
-	# every effect size matches the web build exactly (fixture dumped from index.html)
+	# every effect size matches the balance fixture (tools/dump_domino_values.gd rewrites it after a balance change on purpose)
 	var fixture = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/domino_values.json"))
 	var bad := 0
 	for i in fixture.size():
@@ -127,7 +127,7 @@ func _tests() -> void:
 			for s in 13:
 				if int(f.fx[j].vals[s]) != e.value(s):
 					bad += 1
-	expect(bad == 0, "all 80 dominoes x 13 pip totals match the web build (%d mismatches)" % bad)
+	expect(bad == 0, "every domino x 13 pip totals match the balance fixture (%d mismatches)" % bad)
 	var allc := true
 	for d in cat:
 		if d.condition != null and d.condition.text == "":
@@ -204,19 +204,19 @@ func _tests() -> void:
 	g = fresh(); g.pl.hp = 45; r = await run(g, "Mend", 6, 6); expect(r.hp == 50, "healing is capped at max HP")
 	g = fresh(); g.hand = [dom("Slash", 1, 1), dom("Slash", 1, 1), dom("Slash", 1, 1)]
 	r = await run(g, "Chaos Dice", 3, 3)
-	expect(r.hand == 3 and r.sh == 5, "Chaos Dice rerolls the hand and gives shield 5")
+	expect(r.hand == 3 and r.sh == 7, "Chaos Dice rerolls the hand and gives shield 7")
 	g = fresh(); g.hand = [dom("Slash", 1, 1)]
 	r = await run(g, "Second Wind", 3, 4);              expect(r.hp == 35 and r.hand == 2, "Second Wind 3|4: heal 5 and draw 1")
 	g = fresh(); r = await run(g, "Battle Trance", 3, 4); expect(r.dealt == 5 and r.pow == 1, "Battle Trance 3|4: 5 damage then +1 Power")
 	g = fresh(); r = await run(g, "Shield Bash", 3, 4); expect(r.dealt == 6 and r.sh == 6, "Shield Bash 3|4: 6 damage and 6 shield")
-	g = fresh(); r = await run(g, "Precision", 3, 4);   expect(r.boost == 6 and r.hand == 1, "Precision 3|4: Boost 6 and draw 1")
+	g = fresh(); r = await run(g, "Precision", 3, 4);   expect(r.boost == 7 and r.hand == 1, "Precision 3|4: Boost 7 and draw 1")
 	g = fresh(); r = await run(g, "Lifesteal", 3, 4);   expect(r.dealt == 6 and r.hp == 33, "Lifesteal 3|4: 6 damage and heal 3")
 	g = fresh(); g.hand = [dom("Slash", 1, 1)]; g.ui.picks = [0]
 	await run(g, "Loaded Dice", 2, 2)
-	expect(g.hand.size() == 2 and g.stats.rerolls == 1, "Loaded Dice rerolls the chosen domino (pick) and draws")
+	expect(g.hand.size() == 3 and g.stats.rerolls == 1, "Loaded Dice rerolls the chosen domino (pick) and draws 2")
 
 	# ---------- Fury / Impair ----------
-	g = fresh(); r = await run(g, "Rage Up", 3, 3);     expect(r.fury == 4, "Rage Up 3|3 gains 4 Fury")
+	g = fresh(); r = await run(g, "Rage Up", 3, 3);     expect(r.fury == 3, "Rage Up 3|3 gains 3 Fury")
 	g = fresh(); r = await run(g, "Sting", 3, 3);       expect(r.efury == -4, "Sting 3|3 puts 4 Impair on the enemy")
 	g = fresh(); g.pl.add("fury", 3); r = await run(g, "Slash", 3, 4)
 	expect(r.dealt == 12 and r.fury == 2, "Fury adds to damage (9 + 3) and ticks down after an attack")
@@ -224,14 +224,14 @@ func _tests() -> void:
 	expect(r.dealt == 6 and r.fury == -2, "Impair subtracts (9 - 3) and ticks up toward 0")
 	g = fresh(); g.pl.add("fury", -9); r = await run(g, "Slash", 0, 0);  expect(r.dealt == 0, "damage never goes below 0")
 	g = fresh(); g.pl.add("fury", 3); r = await run(g, "Reckless Blow", 4, 4)
-	expect(r.dealt == 21 and r.fury == -2, "3 Fury + 6 Impair on self nets 3 Impair, ticking to 2 (dealt %d, fury %d)" % [r.dealt, r.fury])
+	expect(r.dealt == 18 and r.fury == -2, "3 Fury + 6 Impair on self nets 3 Impair, ticking to 2 (dealt %d, fury %d)" % [r.dealt, r.fury])
 	g = fresh(); g.pl.add("fury", -2); r = await run(g, "Rage Up", 0, 0); expect(r.fury == -1, "gaining Fury cancels Impair (no attack, no tick)")
-	g = fresh(); r = await run(g, "Berserker", 2, 3);   expect(r.dealt == 12 and r.fury == 5, "Berserker 2|3: Fury 6 first, then 12 damage, ticks to 5")
+	g = fresh(); r = await run(g, "Berserker", 2, 3);   expect(r.dealt == 10 and r.fury == 4, "Berserker 2|3: Fury 5 first, then 10 damage, ticks to 4")
 	g = fresh(); r = await run(g, "Blood Ward", 2, 3);  expect(r.sh == 10 and r.hp == 28, "Blood Ward 2|3: 10 shield, lose 2 HP")
 	g = fresh(); r = await run(g, "Blood Rage", 2, 3);  expect(r.fury == 5 and r.hp == 28, "Blood Rage 2|3: 5 Fury, lose 2 HP")
-	g = fresh(); r = await run(g, "Spare Parts", 2, 2); expect(r.stack == 5 and r.sh == 5, "Spare Parts adds a random domino to the stack")
+	g = fresh(); r = await run(g, "Spare Parts", 2, 2); expect(r.stack == 5 and r.sh == 7, "Spare Parts adds a random domino to the stack")
 	g = fresh(); r = await run(g, "Second Chance", 3, 3); expect(r.lives == 5 and r.stack == 6, "Second Chance: +2 lives and 2 dominoes in the stack")
-	g = fresh(); r = await run(g, "Overwhelm", 3, 3);   expect(r.efury == -11 and r.boost == 10, "Overwhelm 3|3: 11 Impair on the enemy, Boost 10")
+	g = fresh(); r = await run(g, "Overwhelm", 3, 3);   expect(r.efury == -8 and r.boost == 8, "Overwhelm 3|3: 8 Impair on the enemy, Boost 8")
 	g = fresh(); g.pl.add("boost", 9); r = await run(g, "Slash", 3, 4)
 	var second := await run(g, "Slash", 3, 4)
 	expect(r.dealt == 18 and r.boost == 0 and second.dealt - r.dealt == 9, "Boost is used up by the first attack: 18, then 9")

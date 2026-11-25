@@ -98,7 +98,7 @@ func test_levels() -> void:
 			if d.max_level() == want:
 				seen[d.rarity] += 1
 	expect(seen.c > 30 and seen.u > 30 and seen.r > 20, "common 4 / uncommon 3 / rare 2 levels (%s)" % str(seen))
-	expect(by["Quick Strike"].max_level() == 1 and by["Garbage"].max_level() == 1, "weapon dominoes and Garbage cannot be upgraded")
+	expect(by["Quick Strike"].max_level() == 4 and by["Garbage"].max_level() == 1, "weapon dominoes can go up to 4 (their weapon sets it) and Garbage cannot be upgraded")
 	var base = by["Slash"]
 	expect(base.at_level(1) == base and base.at_level(2) == base.at_level(2) and base.at_level(2).base == base, "levels are built once and remember the kind")
 	expect(base.at_level(2).title == "Slash" and base.at_level(3).level == 3 and base.at_level(0).level == 0 and base.at_level(9).level == 4, "same title, own level (a level past the top stops at the top)")
@@ -191,7 +191,10 @@ func test_domino_api() -> void:
 	expect(d.level() == 0 and not d.can_downgrade() and not d.downgrade() and d.level_tag() == "-" and d.display_name() == "Slash-", "downgrade goes to level 0 and stops")
 	expect(d.upgrade() and d.level() == 1, "upgrading a downgraded domino brings it back to level 1")
 	var w = make(g, "Quick Strike")
-	expect(not w.can_upgrade() and not w.can_downgrade() and not w.upgrade(), "a weapon domino has no levels")
+	w.set_level(3)
+	expect(w.level() == 3 and w.display_name() == "Quick Strike++" and w.max_level() == 4, "a weapon domino can be set to a level (the weapon does that)")
+	w.set_level(9)
+	expect(w.level() == 4, "set_level stops at the top level")
 	var risky = make(g, "Risky Manoeuvre")
 	risky.upgrade()
 	expect(risky.level() == 2 and not risky.can_upgrade() and risky.specs[0].text() == "3-6" and risky.data.pips[0].is_volatile(), "a rare domino stops at 2 and keeps its pips")
@@ -289,11 +292,11 @@ func test_shop() -> void:
 	var all_ok := true
 	for i in 80:
 		var items: Array = g.generate_shop()
-		var ups := items.filter(func(it): return it.kind == "upgrade")
+		var ups := items.filter(func(it): return it.kind == "upgrade" and it.mode != "weapon")
 		all_ok = all_ok and ups.size() == 1 and ups[0].price == Game.UPGRADE_PRICE[ups[0].mode]
 		modes[ups[0].mode] = true
 	expect(all_ok and modes.size() == 3, "every shop has one upgrade, randomly: pick 5 / random 3 / two random 6 gems %s" % str(modes.keys()))
-	expect(Game.UPGRADE_PRICE == {"pick": 5, "random": 3, "random2": 6}, "the upgrade prices are 5, 3 and 6 gems")
+	expect(Game.UPGRADE_PRICE.pick == 5 and Game.UPGRADE_PRICE.random == 3 and Game.UPGRADE_PRICE.random2 == 6, "the upgrade prices are 5, 3 and 6 gems")
 	# pick a domino
 	g = fresh()
 	g.collection = [make(g, "Slash"), make(g, "Parry"), make(g, "Slash")]
@@ -313,7 +316,7 @@ func test_shop() -> void:
 	expect(not g.buy(0, top) and g.gems == 15, "a domino at its top level cannot be chosen")
 	# random
 	g = fresh()
-	g.collection = [make(g, "Slash"), make(g, "Parry"), make(g, "Jab"), make(g, "Quick Strike"), make(g, "Garbage")]
+	g.collection = [make(g, "Slash"), make(g, "Parry"), make(g, "Jab"), make(g, "Quick Strike"), make(g, "Garbage")]   # a weapon domino and Garbage are never upgraded here
 	g.shop = [upgrade_item("random")]
 	g.gems = 3
 	expect(g.buy(0) and g.gems == 0 and levels(g).count(2) == 1 and g.collection[3].level() == 1 and g.collection[4].level() == 1, "random: 3 gems, one upgradable domino goes up (never a weapon or Garbage)")

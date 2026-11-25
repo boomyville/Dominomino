@@ -57,7 +57,7 @@ func show_stats(game) -> void:
 		["Gems", game.gems],
 		["Next battle", "Battle %d" % (game.battle_no + 1)],
 		["Dominoes owned", game.collection.size()],
-		["Weapon", game.weapon.title if game.weapon != null else "none"],
+		["Weapon", game.weapon.display_name() if game.weapon != null else "none"],
 		["Artifacts equipped", "%d / %d" % [game.relics.size(), game.EQUIP_SLOTS]],
 		["Unequipped", "%d artifacts, %d weapons" % [game.stored_relics.size(), game.stored_weapons.size()]],
 		["Damage dealt", s.dealt],

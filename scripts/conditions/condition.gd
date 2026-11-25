@@ -4,6 +4,7 @@ extends RefCounted
 
 var id := ""
 var text := ""     # finishes the sentence "Only if ...", for example "you have no shield"
+var hand_size := false   # a "you must hold N dominoes" condition: the Loose Grip artifact ignores these
 
 
 ## Is the condition met for the hand domino at index i right now?

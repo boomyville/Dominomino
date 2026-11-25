@@ -79,10 +79,12 @@ static func fill_relic(rt: RichTextLabel, relic) -> void:
 	rt.clear()
 	rt.add_image(Icons.relic_texture(relic), Icons.RELIC_SIZE, Icons.RELIC_SIZE)
 	rt.push_bold()
-	rt.append_text("  " + relic.title)
+	rt.append_text("  " + relic.display_name())
 	rt.pop()
 	rt.append_text("\n%s %s\n" % [relic.rarity_name(), relic.kind_name()])
 	append_rich(rt, relic.text)
+	if relic.weapon:
+		rt.append_text("\n[i]%s[/i]" % relic.level_line())
 
 
 ## A glossary card: the status icon and name, then what it does.
@@ -100,7 +102,9 @@ static func fill_status(rt: RichTextLabel, id: String) -> void:
 static func fill_relic_line(rt: RichTextLabel, relic) -> void:
 	rt.clear()
 	rt.push_bold()
-	rt.append_text(relic.title)
+	rt.append_text(relic.display_name())
 	rt.pop()
 	rt.append_text("  (%s %s)\n" % [relic.rarity_name(), relic.kind_name()])
 	append_rich(rt, relic.text)
+	if relic.weapon:
+		rt.append_text("\n[i]%s[/i]" % relic.level_line())

@@ -176,8 +176,8 @@ func test_balance() -> void:
 		var s = make(g, name)
 		weak += s.total()
 	expect(strong > weak, "the big attacks have higher pips than the small ones")
-	expect(make(g, "Quick Strike").total() == 2 and make(g, "Heavy Blade").total() == 7 and make(g, "Cutting Edge").total() == 1,
-			"weapon dominoes keep their old pips")
+	expect(make(g, "Quick Strike").total() == 2 and make(g, "Heavy Blade").total() == 7 and make(g, "Cutting Edge").total() == 4 and make(g, "Rip and Shred").total() == 5,
+			"weapon dominoes have their own fixed pips")
 
 
 func test_battle_rolls() -> void:
@@ -352,7 +352,7 @@ func test_pip_effects() -> void:
 	g.hand = [d]
 	var max0: int = g.pl.max_shield
 	await g.run_fx(d)
-	expect(g.pl.shield == 4 and g.pl.max_shield == max0 + 2, "Flakey Shield: shield = difference (4), max shield + lowest pip (2)")
+	expect(g.pl.shield == 8 and g.pl.max_shield == max0 + 3, "Flakey Shield: shield = difference + 4 (8), max shield = lowest pip + 1 (3), draws 2")
 	g = fresh()
 	d = make(g, "Chaos Force")
 	d.roll_all(g.rng)

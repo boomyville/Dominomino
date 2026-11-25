@@ -6,9 +6,11 @@ const DamageCmd = preload("res://scripts/cmd/damage_cmd.gd")
 const StatusFury = preload("res://scripts/status/status_fury.gd")
 const StatusPower = preload("res://scripts/status/status_power.gd")
 const StatusBoost = preload("res://scripts/status/status_boost.gd")
+const StatusStalwart = preload("res://scripts/status/status_stalwart.gd")
+const StatusRegenerative = preload("res://scripts/status/status_regenerative.gd")
 
 ## Order the statuses are listed in on a tag.
-const STATUS_ORDER := ["fury", "power", "boost"]
+const STATUS_ORDER := ["fury", "power", "boost", "stalwart", "regenerative"]
 
 var hp := 50
 var max_hp := 50
@@ -30,6 +32,10 @@ static func _make_status(id: String):
 			return StatusPower.new()
 		"boost":
 			return StatusBoost.new()
+		"stalwart":
+			return StatusStalwart.new()
+		"regenerative":
+			return StatusRegenerative.new()
 	push_error("unknown status: " + id)
 	return null
 

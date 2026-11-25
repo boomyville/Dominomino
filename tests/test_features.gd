@@ -140,8 +140,8 @@ func _tests() -> void:
 	for r in all:
 		rc[r.rarity] += 1
 		ids[r.id] = true
-	expect(all.size() == 36 and ids.size() == 36, "36 artifacts (30 + 6 new) with unique ids")
-	expect(rc == {"c": 13, "u": 16, "r": 7}, "artifact rarities 13 common / 16 uncommon / 7 rare %s" % rc)
+	expect(all.size() == 43 and ids.size() == 43, "43 artifacts (36 + 7 new) with unique ids")
+	expect(rc == {"c": 15, "u": 20, "r": 8}, "artifact rarities 15 common / 20 uncommon / 8 rare %s" % rc)
 	expect(Relics.by_id("gamblers_purse") != null and Relics.by_id("gamblers_purse").title == "Gambler's Purse", "ids drop apostrophes and spaces")
 	var owned := ids.keys().slice(2)
 	var left := Relics.roll(owned, 3)
@@ -167,20 +167,20 @@ func _tests() -> void:
 	g.occ[Vector2(0, 0)] = {"id": 1, "owner": "c", "pip": 4}
 	g.occ[Vector2(0, 2)] = {"id": 2, "owner": "c", "pip": 4}
 	await g.run_fx(dom("Fireball", 0, 0))
-	expect(200 - g.foe.hp == 8, "Fireball: 4 damage per fire pip")
+	expect(200 - g.foe.hp == 12, "Fireball: 6 damage per fire pip")
 	g.pl.add("fury", 2)
 	g.pl.add("power", 1)
 	await g.run_fx(dom("Fireball", 0, 0))
-	expect(200 - g.foe.hp == 8 + 8 + 3, "pip damage takes Fury and Power like any attack")
+	expect(200 - g.foe.hp == 12 + 12 + 3, "pip damage takes Fury and Power like any attack")
 	g = fresh()
 	g.hand = [dom("Slash", 5, 5), dom("Slash", 5, 1), dom("Slash", 2, 2)]
 	await g.run_fx(dom("Thunderclap", 5, 5))
-	expect(200 - g.foe.hp == 9, "Thunderclap: 3 damage x 3 lightning pips in hand")
+	expect(200 - g.foe.hp == 12, "Thunderclap: 4 damage x 3 lightning pips in hand")
 	g = fresh()
 	g.hand = [dom("Eclipse", 6, 6), dom("Slash", 6, 0), dom("Slash", 2, 2)]
 	var lines: Array = g.fx_lines(g.hand[0])
-	expect(lines[0].contains("1 now") and lines[0].contains("Deal 3 damage"), "in hand, a domino does not count its own pips (%s)" % lines[0])
-	expect(g.caps(0)[0].k == "darkness" and g.caps(0)[0].num == "3", "caption: element icon and the damage if played now")
+	expect(lines[0].contains("1 now") and lines[0].contains("Deal 4 damage"), "in hand, a domino does not count its own pips (%s)" % lines[0])
+	expect(g.caps(0)[0].k == "darkness" and g.caps(0)[0].num == "4", "caption: element icon and the damage if played now")
 	g.hand = [dom("Inferno", 4, 4)]
 	g.occ[Vector2(0, 0)] = {"id": 1, "owner": "c", "pip": 4}
 	expect(g.caps(0)[0].num == "9", "on the board a domino counts its own pips (3 x (1 + 2) = 9)")
@@ -211,7 +211,7 @@ func _tests() -> void:
 	expect(g.lives == 2 and g.hand.size() == 5, "Soul Tithe: lose a life, draw 5 (0.25 x 8 + 3)")
 	g = fresh()
 	await g.run_fx(dom("Hex of Ruin", 5, 5))
-	expect(g.lives == 2 and g.foe.value("fury") == -(12 + 4), "Hex of Ruin: Impair 1.2 x 10 + 4")
+	expect(g.lives == 2 and g.foe.value("fury") == -24, "Hex of Ruin: Impair 1.75 x 10 + 6")
 	g = fresh()
 	await g.run_fx(dom("Crimson Ritual", 5, 5))
 	expect(g.lives == 2 and g.pl.value("fury") == 17 and g.pl.value("power") == 4, "Crimson Ritual: Fury and Power")
@@ -237,7 +237,7 @@ func _tests() -> void:
 	expect(not g.preview_player_attack(2).attack, "a domino whose condition is not met shows no preview")
 	expect(g.foe.hp == 200 and g.foe.shield == 50 and g.pl.value("fury") == 2, "previewing changes nothing")
 	g.foe.shield = 0
-	expect(g.preview_player_attack(3).hp == 5 + (2 + 5), "Berserker 2|2: it gives 5 Fury first, then hits for 5 plus the Fury it now has (12)")
+	expect(g.preview_player_attack(3).hp == 4 + (2 + 4), "Berserker 2|2: it gives 4 Fury first, then hits for 4 plus the Fury it now has (10)")
 	expect(g.preview_player_attack(4).hp == 2 * (5 + 2), "multi-hit: every hit counts (Twin Fang 4|4 = 2 hits of 5, plus Fury 2 each)")
 	# the preview must equal what really happens, for every attack domino at several pip totals
 	var mismatch := 0
@@ -518,7 +518,7 @@ func _tests() -> void:
 	await next_turn(g)
 	expect(g.energy == 11, "once equipped it works (11 energy)")
 	expect(g.relic_ids().size() == 9, "relic_ids lists equipped and unequipped")
-	expect(Relics.roll(g.relic_ids(), 40).size() == 26, "an offer never repeats any relic you own, equipped or not, nor the starter Time Pendant")
+	expect(Relics.roll(g.relic_ids(), 60).size() == 33, "an offer never repeats any relic you own, equipped or not, nor the starter Time Pendant")
 
 	# ---------- rewards: domino, or 20% a choice of domino / artifact ----------
 	expect(Game.RELIC_CHANCE == 0.2, "20% chance of the artifact choice")
@@ -775,12 +775,12 @@ func _tests() -> void:
 	for d in g.hand:
 		if d.data.title == "Cutting Edge":
 			ce = d
-	expect(ce != null and ce.total() == 1, "Cutting Edge costs 1 energy")
+	expect(ce != null and ce.total() == 4, "Cutting Edge costs 4 energy")
 	g.foe.hp = 200
 	g.foe.max_hp = 200
 	g.foe.shield = 0
 	await g.run_fx(ce)
-	expect(200 - g.foe.hp == 25, "Cutting Edge: 5 hits of 5 = 25 damage")
+	expect(200 - g.foe.hp == 12, "Cutting Edge: 3 hits of 4 = 12 damage")
 	# rapier: En Garde at the start of EVERY turn, and it is ephemeral
 	g = Game.new()
 	g.weapon = Relics.by_id("rapier")
@@ -869,14 +869,15 @@ func _tests() -> void:
 	var vs: Dictionary = g.victory_summary
 	expect(g.ui.log.has("victory") and vs.gems >= 2 and vs.gems <= 3 and g.gems == 9 + vs.gems, "victory: 2-3 gems (+%d, now %d)" % [vs.gems, g.gems])
 	expect(vs.dealt > 0 and vs.lost == 0 and vs.battle == 1, "the victory summary has the damage dealt and the HP lost (%s)" % [vs])
-	expect(g.shop_pending and g.shop.size() == 9, "after the first battle there is always a shop with 9 things")
+	expect(g.shop_pending and g.shop.size() >= 9, "after the first battle there is always a shop with 9 things (10 with a weapon upgrade)")
 	var kinds := {"domino": 0, "relic": 0, "weapon": 0, "upgrade": 0}
 	var rare_domino := 0
 	for it in g.shop:
 		kinds[it.kind] += 1
 		if it.kind == "domino" and it.item.data.rarity == "r":
 			rare_domino += 1
-	expect(kinds == {"domino": 5, "relic": 2, "weapon": 1, "upgrade": 1} and rare_domino >= 1, "the shop sells 5 dominoes (at least 1 rare), 2 artifacts, 1 weapon and 1 upgrade")
+	expect(kinds.domino == 5 and kinds.relic == 2 and kinds.weapon == 1 and (kinds.upgrade == 1 or kinds.upgrade == 2) and rare_domino >= 1,
+			"the shop sells 5 dominoes (at least 1 rare), 2 artifacts, 1 weapon and 1 upgrade (2 if it also offers a weapon upgrade)")
 	var price_ok := true
 	for it in g.shop:
 		if it.kind == "upgrade":

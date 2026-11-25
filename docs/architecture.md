@@ -117,6 +117,30 @@ shows the dominoes you can upgrade as they will look), a random domino for 3 gem
 `Game.upgradable_dominoes()` lists what can still go up. A domino with a level other than 1 shows a small tag above its top-right
 corner (`+`, `++`, `+++`, or a red `-`), see `DominoArt.sides`.
 
+## Weapon levels, breaking artifacts, no repeated dominoes
+- **Weapons have levels** like dominoes (`Relic.level`, `upgrade()`, `downgrade()`, `display_name()`): a common weapon can go up 3 times
+  (level 4), an uncommon one twice, a rare one once, and down to level 0. The dominoes a weapon adds are made at the weapon's level
+  (`Game._weapon_dominoes`, as far as they can go; weapon dominoes can reach level 4). A shop has a 10% chance of also offering
+  "upgrade a weapon" for 6 gems (`Game.WEAPON_UPGRADE_CHANCE`): you choose from the weapons you own, equipped or stored.
+- **A shop never sells the same domino twice, and the reward screen never offers a domino the shop sells** (nor the same one twice):
+  `Dominoes.rand_type(rng, exclude)`, `Game.new_domino(exclude)`.
+- **New hooks and statuses:** `on_death` (called by `Game._death_reason` when HP or lives run out: an artifact can save you),
+  `modify_shield_multiplicative` and `modify_heal_multiplicative` (used by `CreatureCmd.gain_shield` / `heal`). The statuses
+  **Stalwart** (doubles shield you gain) and **Regenerative** (doubles healing) use them and go down by 1 each time you end a turn.
+- **Artifacts:** Loose Grip (`ignore_hand`: ignores every "hold N dominoes" condition, `Condition.hand_size`), Stalwart Charm and
+  Phial of Renewal (start a battle with 1 Stalwart / Regenerative), and artifacts that **break**: a row with `"breaks": true`
+  does its action once and then `Game.break_relic` removes it (Lizard Tail on death: +3 lives and half your HP; Last Meal;
+  Emergency Bulwark; Fragile Gauntlet).
+
+## Balance
+`scripts/balance.gd` scores every domino in "damage points" (damage 1, shield 0.9, draw 2, Power 4, Fury 1.8 ...) and divides by
+its energy cost. The target per energy by rarity is common 1.4, uncommon 2.0, rare 3.0 (weapons 2.6); a condition or ephemeral
+domino may be 20% / 30% stronger, and every domino must be within 35% of its target (`tests/test_balance.gd` checks this, the
+upgrade levels, and plays every domino at every level once). For a table of everything run
+`godot --headless -s tools/balance_report.gd` (add `-- all` for every level). To change numbers on purpose, edit `dominoes.gd`, run the
+report until nothing says TOO STRONG or TOO WEAK, then run `tools/dump_domino_values.gd` to rewrite
+`tests/fixtures/domino_values.json` (the test in test_rules.gd that stops accidental changes).
+
 ## The screen
 Everything except the board is a scene made of containers, styled by one theme (`themes/main_theme.tres`):
 
@@ -187,6 +211,8 @@ godot --headless -s tests/test_architecture.gd   # hook order, damage passes, hi
 godot --headless -s tests/test_animation.gd      # flying dominoes and locks, discard pile, speed setting
 godot --headless -s tests/test_pips.gd           # stable / unstable / volatile pips, core vs current, pip effects, balance
 godot --headless -s tests/test_upgrades.gd       # levels, downgrades, the shop upgrade, level tag, deselecting, game over table
+godot --headless -s tests/test_weapons.gd        # weapon levels, weapon upgrade in the shop, no repeats, new artifacts
+godot --headless -s tests/test_balance.gd        # every domino near its target strength, every level plays
 ```
 
 ## Rewards, healing and the screen between battles
@@ -220,4 +246,4 @@ elsewhere). A domino row with `"e": true` is ephemeral: unplayed copies go to th
 ## Gems, victory and the shop
 Start with 9 gems; a win gives 2-3 (+ Jeweler's Loupe). Order after a win: victory screen (`victory_window.gd`) -> reward
 -> screen between battles. After battle 1 (always) and otherwise 30% (`SHOP_CHANCE`) the last button is SHOP: 5 dominoes
-(one rare), 2 artifacts, 1 weapon and 1 upgrade (`generate_shop()`), prices: domino c 2-3 / u 4-5 / r 6-8, artifacts x2, weapons x1.5.
+(one rare, all different), 2 artifacts, 1 weapon and 1 upgrade (`generate_shop()`; 1 shop in 10 adds a weapon upgrade), prices: domino c 2-3 / u 4-5 / r 6-8, artifacts x2, weapons x1.5.

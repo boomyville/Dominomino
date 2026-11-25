@@ -142,8 +142,8 @@ func make_domino(type_id: int, pips_a: int = -1, pips_b: int = -1):
 
 
 ## A random domino of a random kind (never Garbage) with the kind's pips.
-func new_domino():
-	return make_domino(Dominoes.rand_type(rng))
+func new_domino(exclude: Array = []):
+	return make_domino(Dominoes.rand_type(rng, exclude))
 
 
 func garbage():
@@ -270,6 +270,7 @@ func _weapon_dominoes(when: String) -> Array:
 		var kind := Dominoes.index_of(add.t)
 		for i in add.n:
 			var d = make_domino(kind)
+			d.set_level(weapon.level)       # the weapon's level (as far as this domino goes)
 			d.roll_all(rng)
 			out.append({"d": d, "pos": add.pos})
 	return out
@@ -533,7 +534,9 @@ func shop_price(i: int) -> int:
 func can_buy(i: int) -> bool:
 	if i < 0 or i >= shop.size() or shop[i].sold or gems < shop_price(i):
 		return false
-	return shop[i].kind != "upgrade" or not upgradable_dominoes().is_empty()
+	if shop[i].kind != "upgrade":
+		return true
+	return not (upgradable_weapons() if shop[i].mode == "weapon" else upgradable_dominoes()).is_empty()
 
 
 ## Buy shop item i. An upgrade of mode "pick" needs target: the domino in your collection to upgrade.
@@ -541,7 +544,9 @@ func can_buy(i: int) -> bool:
 func buy(i: int, target = null) -> bool:
 	if not can_buy(i):
 		return false
-	if shop[i].kind == "upgrade" and shop[i].mode == "pick" and (target == null or not collection.has(target) or not target.can_upgrade()):
+	if shop[i].kind == "upgrade" and shop[i].mode == "pick" and (target == null or not upgradable_dominoes().has(target)):
+		return false
+	if shop[i].kind == "upgrade" and shop[i].mode == "weapon" and (target == null or not upgradable_weapons().has(target)):
 		return false
 	gems -= shop_price(i)
 	shop[i].sold = true
@@ -558,14 +563,28 @@ func buy(i: int, target = null) -> bool:
 	return true
 
 
-## The dominoes in your collection that can still go up a level.
+## The dominoes in your collection that can still go up a level (weapon dominoes take their weapon's level).
 func upgradable_dominoes() -> Array:
-	return collection.filter(func(d): return d.can_upgrade())
+	return collection.filter(func(d): return d.can_upgrade() and d.data.rarity != "w")
+
+
+## The weapons (the equipped one and the ones in your inventory) that can still go up a level.
+func upgradable_weapons() -> Array:
+	var out := []
+	for w in [weapon] + stored_weapons:
+		if w != null and w.can_upgrade():
+			out.append(w)
+	return out
 
 
 ## Give a level to the chosen domino ("pick"), a random one ("random") or two different random ones ("random2").
 func _buy_upgrade(mode: String, target) -> void:
 	var chosen := []
+	if mode == "weapon":
+		var before_w: String = target.display_name()
+		target.upgrade()
+		shop_note = "Upgraded: %s is now %s (and so are the dominoes it adds)" % [before_w, target.display_name()]
+		return
 	if mode == "pick":
 		chosen = [target]
 	else:
@@ -582,11 +601,14 @@ func _buy_upgrade(mode: String, target) -> void:
 
 ## The upgrade in every shop is one of these, chosen at random.
 const UPGRADE_MODES := ["pick", "random", "random2"]
-const UPGRADE_PRICE := {"pick": 5, "random": 3, "random2": 6}
+const UPGRADE_PRICE := {"pick": 5, "random": 3, "random2": 6, "weapon": 6}
+## A shop has a 10% chance of also offering to upgrade one of your weapons.
+const WEAPON_UPGRADE_CHANCE := 0.1
 const UPGRADE_TEXT := {
 	"pick": "[b]Upgrade a domino[/b]\nChoose any domino you own that is not at its top level. It goes up a level.",
 	"random": "[b]Upgrade a random domino[/b]\nOne domino you own, picked at random, goes up a level.",
 	"random2": "[b]Upgrade 2 random dominoes[/b]\nTwo different dominoes you own, picked at random, each go up a level.",
+	"weapon": "[b]Upgrade a weapon[/b]\nChoose one of your weapons. It goes up a level, and so do the dominoes it adds.",
 }
 
 
@@ -605,9 +627,13 @@ func _domino_price(r: String) -> int:
 ## 5 dominoes (one of them always rare), 2 artifacts (twice the price of a domino of their rarity) and
 ## 1 weapon (1.5 times). Rarer ones turn up less often (60 / 30 / 10).
 func generate_shop() -> Array:
+	var used := []         # the shop never sells two of the same domino
 	var doms := [make_domino(Dominoes.rand_type_of("r", rng))]
+	used.append(doms[0].data.id)
 	for i in 4:
-		doms.append(new_domino())
+		var d = new_domino(used)
+		used.append(d.data.id)
+		doms.append(d)
 	rshuffle(doms)
 	var items := []
 	for d in doms:
@@ -618,6 +644,8 @@ func generate_shop() -> Array:
 		items.append({"kind": "weapon", "item": w, "price": roundi(1.5 * _domino_price(w.rarity)), "sold": false})
 	var mode: String = UPGRADE_MODES[rng.randi() % UPGRADE_MODES.size()]
 	items.append({"kind": "upgrade", "mode": mode, "item": {"text": UPGRADE_TEXT[mode]}, "price": UPGRADE_PRICE[mode], "sold": false})
+	if rng.randf() < WEAPON_UPGRADE_CHANCE and not upgradable_weapons().is_empty():
+		items.append({"kind": "upgrade", "mode": "weapon", "item": {"text": UPGRADE_TEXT["weapon"]}, "price": UPGRADE_PRICE["weapon"], "sold": false})
 	return items
 
 
@@ -878,6 +906,8 @@ func check_p(m: Dictionary) -> Dictionary:
 ## Does the hand domino at index i meet its play condition right now?
 func cond_ok(i: int) -> bool:
 	var c = hand[i].data.condition
+	if c != null and c.hand_size and relic_sum("ignore_hand") > 0:
+		return true           # Loose Grip: "you must hold N dominoes" does not matter
 	return c == null or c.met(self, i)
 
 
@@ -1034,6 +1064,26 @@ func hit_pl(n: int) -> int:
 	return DamageCmd.deal(self, foe, pl, n).taken
 
 
+## "" while you are alive. At 0 HP or 0 lives artifacts get one chance to save you (the on_death hook:
+## the Lizard Tail gives lives and heals you); if they do not, this says why the run is over.
+func _death_reason() -> String:
+	if pl.hp > 0 and lives > 0:
+		return ""
+	dispatch("on_death")
+	if pl.hp > 0 and lives > 0:
+		ui.refresh()
+		return ""
+	return "You were defeated" if pl.hp <= 0 else "You ran out of lives"
+
+
+## An artifact that breaks (a row with "breaks": true) leaves your inventory for good.
+func break_relic(r) -> void:
+	relics.erase(r)
+	stored_relics.erase(r)
+	history.add("relic_broken", {"relic": r.id})
+	ui.toast("%s crumbles to dust" % r.title)
+
+
 func lose_life() -> void:
 	lives -= 1
 	stats.lost += 1
@@ -1153,11 +1203,9 @@ func play_domino(m: Dictionary) -> void:
 	await run_fx(d)
 	busy = 0
 	ui.note_play()
-	if pl.hp <= 0:
-		finish("You were defeated")
-		return
-	if lives <= 0:
-		finish("You ran out of lives")
+	var dead := _death_reason()
+	if dead != "":
+		finish(dead)
 		return
 	if foe.hp <= 0:
 		await battle_won()
@@ -1203,8 +1251,9 @@ func end_turn() -> void:
 		stats.lost += 1
 		ui.refresh()
 		await ui.pause(1.1)
-		if lives <= 0:
-			finish("You ran out of lives")
+		var skipped_dead := _death_reason()
+		if skipped_dead != "":
+			finish(skipped_dead)
 			return
 	foe.shield = 0
 	for it in foe.intent.duplicate():
@@ -1213,11 +1262,9 @@ func end_turn() -> void:
 		_enemy_act(it)
 		_cache.clear()
 		ui.refresh()
-		if pl.hp <= 0:
-			finish("You were defeated")
-			return
-		if lives <= 0:
-			finish("You ran out of lives")
+		var down := _death_reason()
+		if down != "":
+			finish(down)
 			return
 	await ui.pause(0.45)
 	_new_turn_state()
@@ -1340,8 +1387,14 @@ func _begin_reward() -> Array:
 	shop_note = ""
 	ui.refresh()
 	var opts := []
+	var taken := []        # a domino offered here is not in the shop, and the choices are all different
+	for it in shop:
+		if it.kind == "domino":
+			taken.append(it.item.data.id)
 	for i in 3 + relic_sum("rewards"):
-		opts.append(new_domino())
+		var d = new_domino(taken)
+		taken.append(d.data.id)
+		opts.append(d)
 	reward_note = ""
 	artifact_offered = rng.randf() < relic_chance and not Relics.roll(relic_ids(), 1, rng).is_empty()
 	return opts

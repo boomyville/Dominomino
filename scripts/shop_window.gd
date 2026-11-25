@@ -1,7 +1,8 @@
 extends PanelContainer
-## The shop: 5 dominoes, 2 artifacts, 1 weapon and 1 upgrade for gems (game.shop). Buy with the button under
-## each card. The upgrade is one of: pick a domino (5 gems), a random domino (3) or 2 random dominoes (6).
-## Buying "pick" first shows the dominoes you can upgrade, each as it would look after the upgrade.
+## The shop: 5 different dominoes, 2 artifacts, 1 weapon and 1 upgrade for gems (game.shop). Buy with the
+## button under each card. The upgrade is one of: pick a domino (5 gems), a random domino (3) or 2 random dominoes
+## (6). Buying "pick" first shows the dominoes you can upgrade, each as it would look after the upgrade.
+## One shop in ten also offers to upgrade a weapon (6 gems): you choose which of your weapons.
 ## Leave shop closes it (Back, while you are choosing).
 
 signal closed
@@ -80,12 +81,12 @@ func _rebuild() -> void:
 		else:
 			var price: int = g.shop_price(i)
 			b.text = "%s: buy for %d" % [kind, price]
-			if e.kind == "upgrade" and e.mode == "pick":
+			if e.kind == "upgrade" and (e.mode == "pick" or e.mode == "weapon"):
 				b.text = "Upgrade: choose, %d" % price
 			b.disabled = not g.can_buy(i)
-			if e.kind == "upgrade" and g.gems >= price and g.upgradable_dominoes().is_empty():
+			if e.kind == "upgrade" and g.gems >= price and not g.can_buy(i):
 				b.text = "Nothing to upgrade"
-			if e.kind == "upgrade" and e.mode == "pick":
+			if e.kind == "upgrade" and (e.mode == "pick" or e.mode == "weapon"):
 				b.pressed.connect(_start_pick.bind(i))
 			else:
 				b.pressed.connect(func(): g.buy(i); _rebuild())
@@ -97,13 +98,29 @@ func _start_pick(i: int) -> void:
 	_rebuild_picker()
 
 
-## The dominoes you can upgrade, each shown as it would be after the upgrade.
+## The dominoes you can upgrade, each shown as it would be after the upgrade (or your weapons).
 func _rebuild_picker() -> void:
 	var g = _game
-	gems_l.text = "Choose a domino to upgrade (%d gems)" % g.shop_price(_picking)
+	var weapons: bool = g.shop[_picking].mode == "weapon"
+	gems_l.text = "Choose a %s to upgrade (%d gems)" % ["weapon" if weapons else "domino", g.shop_price(_picking)]
 	_note_l.visible = false
 	leave_b.text = "Back"
 	_clear()
+	if weapons:
+		for w in g.upgradable_weapons():
+			var wcell := VBoxContainer.new()
+			wcell.add_theme_constant_override("separation", 4)
+			grid.add_child(wcell)
+			var wcard = CardScene.instantiate()
+			wcell.add_child(wcard)
+			wcard.show_item(g, w)
+			wcard.focus_mode = Control.FOCUS_NONE
+			wcard.pressed.connect(_on_pick.bind(w))
+			var wl := Label.new()
+			wl.text = "%s: level %d to %d" % [w.title, w.level, w.level + 1]
+			wl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			wcell.add_child(wl)
+		return
 	for d in g.upgradable_dominoes():
 		var cell := VBoxContainer.new()
 		cell.add_theme_constant_override("separation", 4)

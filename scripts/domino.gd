@@ -41,7 +41,7 @@ func _init(domino_data = null, pips_a: int = -1, pips_b: int = -1) -> void:
 
 ## Upgrade levels. The kind says what each level does (see upgrades.gd); the domino remembers its level by
 ## pointing at that level's DominoData. Level 1 is normal, 0 is downgraded. The highest level depends on the
-## rarity: common 4, uncommon 3, rare 2. Weapons and Garbage have one level.
+## rarity: common 4, uncommon 3, rare 2. Garbage has one level. Weapon dominoes take their weapon's level.
 func level() -> int:
 	return data.level if data != null else 1
 
@@ -56,6 +56,12 @@ func can_upgrade() -> bool:
 
 func can_downgrade() -> bool:
 	return data != null and data.max_level() > 1 and data.level > 0
+
+
+## Jump to a level (0 up to the highest this kind has).
+func set_level(n: int) -> void:
+	if data != null:
+		data = data.at_level(clampi(n, 0, data.max_level()))
 
 
 func upgrade() -> bool:

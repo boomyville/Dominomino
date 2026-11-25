@@ -5,6 +5,7 @@ extends "res://scripts/conditions/condition.gd"
 func _init() -> void:
 	id = "hand4"
 	text = "you hold 4 or more dominoes"
+	hand_size = true
 
 
 func met(game, _i: int) -> bool:

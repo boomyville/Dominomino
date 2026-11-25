@@ -4,7 +4,17 @@ extends RefCounted
 ## the same way no matter what caused it.
 
 
+## The shield or healing after every model has had its say (Stalwart and Regenerative double it).
+static func scaled(game, target, n: int, shield: bool) -> int:
+	var factor := 1.0
+	for m in game.active_models():
+		factor *= m.modify_shield_multiplicative(n, {"target": target}) if shield \
+				else m.modify_heal_multiplicative(n, {"target": target})
+	return int(floor(n * factor))
+
+
 static func gain_shield(game, target, n: int) -> void:
+	n = scaled(game, target, n, true)
 	target.shield += n
 	var side: String = game.side_of(target)
 	if side == "p":
@@ -25,7 +35,7 @@ static func gain_max_hp(game, target, n: int) -> void:
 
 ## Heals up to max HP. Returns how much was healed.
 static func heal(game, target, n: int) -> int:
-	var healed: int = target.heal(n)
+	var healed: int = target.heal(scaled(game, target, n, false))
 	var side: String = game.side_of(target)
 	if side == "p":
 		game.stats.healed += healed
