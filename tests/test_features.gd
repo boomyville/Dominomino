@@ -140,8 +140,8 @@ func _tests() -> void:
 	for r in all:
 		rc[r.rarity] += 1
 		ids[r.id] = true
-	expect(all.size() == 43 and ids.size() == 43, "43 artifacts (36 + 7 new) with unique ids")
-	expect(rc == {"c": 15, "u": 20, "r": 8}, "artifact rarities 15 common / 20 uncommon / 8 rare %s" % rc)
+	expect(all.size() == 48 and ids.size() == 48, "48 artifacts (43 + 5 new) with unique ids")
+	expect(rc == {"c": 18, "u": 22, "r": 8}, "artifact rarities 18 common / 22 uncommon / 8 rare %s" % rc)
 	expect(Relics.by_id("gamblers_purse") != null and Relics.by_id("gamblers_purse").title == "Gambler's Purse", "ids drop apostrophes and spaces")
 	var owned := ids.keys().slice(2)
 	var left := Relics.roll(owned, 3)
@@ -518,7 +518,7 @@ func _tests() -> void:
 	await next_turn(g)
 	expect(g.energy == 11, "once equipped it works (11 energy)")
 	expect(g.relic_ids().size() == 9, "relic_ids lists equipped and unequipped")
-	expect(Relics.roll(g.relic_ids(), 60).size() == 33, "an offer never repeats any relic you own, equipped or not, nor the starter Time Pendant")
+	expect(Relics.roll(g.relic_ids(), 60).size() == 38, "an offer never repeats any relic you own, equipped or not, nor the starter Time Pendant")
 
 	# ---------- rewards: domino, or 20% a choice of domino / artifact ----------
 	expect(Game.RELIC_CHANCE == 0.2, "20% chance of the artifact choice")
@@ -737,7 +737,7 @@ func _tests() -> void:
 	var by := {}
 	for e in deck:
 		by[e.d.data.title] = by.get(e.d.data.title, 0) + 1
-	expect(deck.size() == 25 and by["Quick Strike"] == 2 and by["Slash"] >= 3, "the Short Sword adds 3 Slash and 2 Quick Strike to the 20 dominoes (25 in all)")
+	expect(deck.size() == 25 and by["Quick Strike"] == 2 and by["Sword Slash"] == 3, "the Short Sword adds 3 Sword Slash and 2 Quick Strike to the 20 dominoes (25 in all)")
 	expect(g.collection.size() == 20, "weapon dominoes are not added to your collection")
 	var qs: Array = []
 	for e in deck:

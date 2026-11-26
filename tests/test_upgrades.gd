@@ -128,7 +128,7 @@ func test_every_domino() -> void:
 	var total := 0
 	var extras_from_3 := true
 	for base in g.data:
-		if base.max_level() <= 1:
+		if base.max_level() <= 1 or base.row.has("levels"):      # a domino that spells its levels out is tested on its own
 			continue
 		var dom = g.make_domino(base.id)
 		dom.roll_all(_rng)

@@ -54,7 +54,11 @@ static func fill(rt: RichTextLabel, game, d, index: int = -1) -> void:
 	rt.pop()
 	var span: Vector2i = d.total_span()
 	var level_text := ", level %d/%d" % [d.level(), d.max_level()] if d.max_level() > 1 else ""
-	rt.append_text("\n%s, pip total %s%s\n" % [def.rarity_name(), str(span.x) if span.x == span.y else "%d-%d" % [span.x, span.y], level_text])
+	rt.append_text("\n%s %s, pip total %s%s\n" % [def.rarity_name(), d.type(), str(span.x) if span.x == span.y else "%d-%d" % [span.x, span.y], level_text])
+	if d.origin == "equipment":
+		rt.append_text("[i]Made by your equipment: it is gone when the battle ends.[/i]\n")
+	elif d.origin == "created":
+		rt.append_text("[i]Made by another domino: it is gone when the battle ends.[/i]\n")
 	if d.specs[0].is_volatile() or d.specs[1].is_volatile():
 		rt.append_text("[i]Volatile pips: rolled again at the start of every turn until played.[/i]\n")
 	elif d.has_ranged():
@@ -85,6 +89,8 @@ static func fill_relic(rt: RichTextLabel, relic) -> void:
 	append_rich(rt, relic.text)
 	if relic.weapon:
 		rt.append_text("\n[i]%s[/i]" % relic.level_line())
+	if relic.counter_text() != "":
+		rt.append_text("\n[i]%s[/i]" % relic.counter_line())
 
 
 ## A glossary card: the status icon and name, then what it does.
@@ -108,3 +114,5 @@ static func fill_relic_line(rt: RichTextLabel, relic) -> void:
 	append_rich(rt, relic.text)
 	if relic.weapon:
 		rt.append_text("\n[i]%s[/i]" % relic.level_line())
+	if relic.counter_text() != "":
+		rt.append_text("\n[i]%s[/i]" % relic.counter_line())

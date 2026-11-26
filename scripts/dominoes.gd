@@ -1,9 +1,13 @@
 extends RefCounted
-## The domino catalogue: 112 dominoes plus Garbage (the last entry). The first 80 come from the web build.
+## The domino catalogue: 121 dominoes plus Garbage (the last entry). The first 80 come from the web build.
 ## Ported from the web build (index.html). Edit the numbers here to rebalance.
 ## build() turns this table into DominoData objects (with Effect and Condition objects inside).
 ##
 ## Each domino: {"n": name, "r": rarity (c, u, r, g), "c": play condition id ("" = always playable), "p": pips, "fx": [effects]}
+## Rarity w is a WEAPON domino (only a weapon adds it; "tier" c, u or r is its weapon's rarity: it sets the highest level and
+## how strong it should be, a little above a regular domino of that rarity). Rarity x is a token that only other dominoes make
+## (Phantom Shiv). A domino is an ATTACK if it has an attack effect and a SKILL if it has none (DominoData.type).
+## "levels": {"0": {...}, "2": {...}} spells a level out by replacing keys of the row (see upgrades.gd).
 ## Each effect: {"k": kind, "m": value mode, "a": a, "b": b, "t": hit count, "src": which pip number to use}
 ##
 ## PIPS ("p") are [left, right]. A pip is a number from 0 to 6 (STABLE: its value never changes, nearly every
@@ -21,6 +25,10 @@ extends RefCounted
 ##   dmg hit(t hits)  shield  maxs (max shield)  draw  discR (discard random)  discP (discard of your choice)
 ##   tutor (find in stack)  power  boost  heal  rerollA (all in hand)  rerollP (one of your choice)
 ##   energy (lose energy)  endturn (playing it ends your turn)   [these two are mostly used by downgraded dominoes]
+##   addhand ("d": domino name, b: how many, added to your hand)  replay ("pick": equipment or random, "n", "times": play
+##   dominoes from your hand again and discard them)  typedmg ("ty": damage per attack/skill in your hand)
+##   playeddmg (damage per attack/skill played this turn)  scrap (discard all of a type, shield per domino)
+##   drawattack (draw attack dominoes from the stack)  berserk (a status: only attacks can be played this turn)
 ##   uptick (+1 to both pips of a domino in your hand, max 6, until the battle ends)
 ##   fury  impS (impair yourself)  impE (impair the enemy)  selfdmg (lose HP)  gen (add random dominoes to stack)  life
 ##   playedpips (damage = pips of every domino you played)  paylife (lose a life, pair with condition "lives2")  pipdmg (damage per pip of one number on the board / in hand)
@@ -127,11 +135,11 @@ const TY := [
 	{"n": "Quick Draw", "r": "u", "c": "", "e": true, "p": [3, 3], "fx": [{"k": "draw", "m": "L", "a": 0.5, "b": 5}]},
 	{"n": "Overpower", "r": "r", "c": "", "e": true, "p": [3, 2], "fx": [{"k": "dmg", "m": "L", "a": 3.0, "b": 9}]},
 	# ---- weapon dominoes (rarity w): only a weapon adds them, they are never offered as rewards
-	{"n": "Quick Strike", "r": "w", "c": "first", "e": true, "p": [1, 1], "fx": [{"k": "dmg", "m": "L", "a": 2.5, "b": 3}]},
-	{"n": "Heavy Blade", "r": "w", "c": "", "p": [4, 3], "fx": [{"k": "dmg", "m": "L", "a": 2, "b": 5}]},
-	{"n": "En Garde", "r": "w", "c": "", "e": true, "p": [2, 2], "fx": [{"k": "shield", "m": "L", "a": 1.0, "b": 4}, {"k": "dmg", "m": "L", "a": 1.2, "b": 3}]},
-	{"n": "Rip and Shred", "r": "w", "c": "", "p": [3, 2], "fx": [{"k": "playedpips", "m": "K", "a": 0, "b": 1}]},
-	{"n": "Cutting Edge", "r": "w", "c": "", "p": [2, 2], "fx": [{"k": "hit", "m": "K", "a": 0, "b": 4, "t": 3}]},
+	{"n": "Quick Strike", "r": "w", "tier": "c", "c": "first", "e": true, "p": [1, 1], "fx": [{"k": "dmg", "m": "L", "a": 2, "b": 1}]},
+	{"n": "Heavy Blade", "r": "w", "tier": "u", "c": "", "p": [4, 3], "fx": [{"k": "dmg", "m": "L", "a": 2, "b": 5}]},
+	{"n": "En Garde", "r": "w", "tier": "u", "c": "", "e": true, "p": [2, 2], "fx": [{"k": "shield", "m": "L", "a": 1.0, "b": 4}, {"k": "dmg", "m": "L", "a": 1.2, "b": 3}]},
+	{"n": "Rip and Shred", "r": "w", "tier": "u", "c": "", "p": [3, 2], "fx": [{"k": "playedpips", "m": "K", "a": 0, "b": 1}]},
+	{"n": "Cutting Edge", "r": "w", "tier": "r", "c": "", "p": [2, 2], "fx": [{"k": "hit", "m": "K", "a": 0, "b": 4, "t": 3}]},
 	# ---- unstable pips: a range, rolled at the start of each battle and kept for the whole battle
 	{"n": "Uptick", "r": "c", "c": "", "p": [1, 1], "fx": [{"k": "uptick"}]},
 	{"n": "Wild Swing", "r": "c", "c": "", "p": [[1, 5, "u"], [1, 3, "u"]], "fx": [{"k": "dmg", "src": "max", "m": "S", "a": 2, "b": 1}]},
@@ -144,11 +152,21 @@ const TY := [
 	{"n": "Flakey Shield", "r": "r", "c": "", "p": [[1, 6, "v"], [1, 6, "v"]], "fx": [{"k": "shield", "src": "diff", "m": "S", "a": 1, "b": 4}, {"k": "maxs", "src": "min", "m": "S", "a": 1, "b": 1}, {"k": "draw", "m": "K", "a": 0, "b": 2}]},
 	{"n": "Product Smash", "r": "r", "c": "", "p": [[4, 6, "v"], [3, 6, "v"]], "fx": [{"k": "dmg", "src": "prod", "m": "S", "a": 1, "b": 0}]},
 	{"n": "Fickle Fury", "r": "r", "c": "", "p": [[1, 5, "v"], [1, 5, "v"]], "fx": [{"k": "fury", "src": "max", "m": "S", "a": 1, "b": 2}, {"k": "draw", "m": "K", "a": 0, "b": 1}]},
+	# ---- equipment, skills and attacks: the weapon domino that replaces Slash, and dominoes that care about types
+	{"n": "Sword Slash", "r": "w", "tier": "c", "c": "", "p": [1, 4], "fx": [{"k": "dmg", "m": "S", "a": 1, "b": 3}]},
+	{"n": "Phantom Shiv", "r": "x", "c": "", "e": true, "p": [1, 1], "fx": [{"k": "dmg", "m": "S", "a": 1, "b": 2}]},
+	{"n": "Phantom Blades", "r": "u", "c": "", "p": [2, 1], "fx": [{"k": "addhand", "d": "Phantom Shiv", "m": "K", "a": 0, "b": 3}]},
+	{"n": "Dual Wield", "r": "u", "c": "", "p": [1, 2], "fx": [{"k": "replay", "pick": "equipment", "n": 1, "times": 2}]},
+	{"n": "Barrage", "r": "u", "c": "", "p": [2, 2], "fx": [{"k": "replay", "pick": "random", "n": 2, "times": 1}]},
+	{"n": "Berserk", "r": "u", "c": "onlyAttacks", "p": [2, 3], "fx": [{"k": "dmg", "m": "S", "a": 1, "b": 1}, {"k": "fury", "m": "K", "a": 0, "b": 5}, {"k": "berserk", "m": "K", "a": 0, "b": 1}], "levels": {"0": {"c": "first"}, "2": {"fx": [{"k": "dmg", "m": "S", "a": 1, "b": 1}, {"k": "fury", "m": "K", "a": 0, "b": 7}, {"k": "berserk", "m": "K", "a": 0, "b": 1}]}, "3": {"fx": [{"k": "dmg", "m": "S", "a": 1, "b": 1}, {"k": "fury", "m": "K", "a": 0, "b": 7}, {"k": "berserk", "m": "K", "a": 0, "b": 1}, {"k": "drawattack", "m": "K", "a": 0, "b": 2}]}}},
+	{"n": "Tactician's Strike", "r": "c", "c": "", "p": [1, 2], "fx": [{"k": "typedmg", "ty": "skill", "m": "K", "a": 0, "b": 2}]},
+	{"n": "Momentum Strike", "r": "c", "c": "", "p": [1, 3], "fx": [{"k": "playeddmg", "ty": "attack", "m": "K", "a": 0, "b": 3}]},
+	{"n": "Scrap Shield", "r": "u", "c": "", "p": [2, 2], "fx": [{"k": "scrap", "ty": "attack", "m": "K", "a": 0, "b": 7}]},
 	{"n": "Garbage", "r": "g", "c": "never", "p": [0, 0], "fx": []},
 ]
 
 ## Index of Garbage: always the last row of TY.
-const GARBAGE := 112
+const GARBAGE := 121
 
 const DominoData = preload("res://scripts/domino_data.gd")
 const PipSpec = preload("res://scripts/pip_spec.gd")
@@ -171,6 +189,7 @@ static func make_data(i: int, row: Dictionary):
 	d.row = row
 	d.title = row.n
 	d.rarity = row.r
+	d.tier = row.get("tier", row.r)
 	d.condition = ConditionFactory.make(row.c)
 	d.ephemeral = row.get("e", false)
 	var p: Array = row.get("p", [0, 0])

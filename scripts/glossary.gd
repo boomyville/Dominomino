@@ -11,6 +11,8 @@ const ENTRIES := {
 		"text": "Adds its value to every attack for the rest of the battle. It never goes down."},
 	"boost": {"name": "Boost", "icon": "boost",
 		"text": "Adds its value to your next attack only, then it is used up."},
+	"berserk": {"name": "Berserk", "icon": "fury",
+		"text": "You can only play attack dominoes. Goes down by 1 at the start of each of your turns."},
 	"stalwart": {"name": "Stalwart", "icon": "shield",
 		"text": "Doubles every Shield you gain. Goes down by 1 each time you end a turn."},
 	"regenerative": {"name": "Regenerative", "icon": "heal",
@@ -25,7 +27,7 @@ const ENTRIES := {
 
 ## effect kind -> the glossary entries it uses
 const BY_KIND := {
-	"fury": ["fury"], "impS": ["impair"], "impE": ["impair"], "power": ["power"], "boost": ["boost"],
+	"fury": ["fury"], "impS": ["impair"], "impE": ["impair"], "power": ["power"], "boost": ["boost"], "berserk": ["berserk"],
 	"shield": ["shield"], "maxs": ["max_shield"], "paylife": ["life"], "life": ["life"],
 }
 

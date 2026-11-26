@@ -81,14 +81,14 @@ func test_weapon_dominoes() -> void:
 	var kinds := {}
 	for d in g.stack + g.hand:
 		kinds[d.data.title] = d.level()
-	expect(kinds.get("Slash", -1) == 3 and kinds.get("Quick Strike", -1) == 3 and kinds.get("Parry", -1) == 1, "a level 3 Short Sword adds level 3 dominoes (your own stay as they are): %s" % str(kinds))
+	expect(kinds.get("Sword Slash", -1) == 3 and kinds.get("Quick Strike", -1) == 3 and kinds.get("Parry", -1) == 1, "a level 3 Short Sword adds level 3 dominoes (your own stay as they are): %s" % str(kinds))
 	g.weapon = Relics.by_id("short_sword")
 	g.weapon.downgrade()
 	g.start_battle()
 	var low := true
 	var count := 0
 	for d in g.stack + g.hand:
-		if d.data.title == "Slash" or d.data.title == "Quick Strike":
+		if d.data.title == "Sword Slash" or d.data.title == "Quick Strike":
 			low = low and d.level() == 0
 			count += 1
 	expect(low and count == 5, "a downgraded weapon adds downgraded dominoes")
@@ -107,7 +107,7 @@ func test_weapon_dominoes() -> void:
 	g2.start_battle()
 	var s1 = null
 	for d in g2.stack + g2.hand:
-		if d.data.title == "Slash":
+		if d.data.title == "Sword Slash":
 			s1 = d
 	var low_damage := 0
 	for e in s1.data.effects:
@@ -119,7 +119,7 @@ func test_weapon_dominoes() -> void:
 	g2.start_battle()
 	var s4 = null
 	for d in g2.stack + g2.hand:
-		if d.data.title == "Slash":
+		if d.data.title == "Sword Slash":
 			s4 = d
 	var high_damage := 0
 	for e in s4.data.effects:
@@ -323,7 +323,15 @@ func test_breaking_artifacts() -> void:
 	b.add_relic(Relics.by_id("emergency_bulwark"))
 	b.add_relic(Relics.by_id("fragile_gauntlet"))
 	b.dispatch("on_battle_start")
-	expect(b.pl.shield == 15 and b.pl.value("power") == 3 and not b.has_relic("emergency_bulwark") and not b.has_relic("fragile_gauntlet"), "Emergency Bulwark (15 shield) and Fragile Gauntlet (3 power) work once and break")
+	expect(b.pl.shield == 15 and b.pl.value("power") == 3 and b.has_relic("emergency_bulwark") and b.has_relic("fragile_gauntlet"), "Emergency Bulwark (15 shield) and Fragile Gauntlet (3 power) work at the start of a battle")
+	b.pl.shield = 0
+	b.pl.add("power", -3)
+	b.dispatch("on_battle_start")
+	expect(b.pl.shield == 10 and b.pl.value("power") == 2, "and again, weaker: their counters went down (10 shield, 2 power)")
+	b.pl.shield = 0
+	b.pl.add("power", -2)
+	b.dispatch("on_battle_start")
+	expect(b.pl.shield == 5 and b.pl.value("power") == 1 and not b.has_relic("emergency_bulwark") and not b.has_relic("fragile_gauntlet"), "the third time (5 shield, 1 power) the counters reach 0 and both break")
 	b.pl.shield = 0
 	b.dispatch("on_battle_start")
 	expect(b.pl.shield == 0, "and do not come back")

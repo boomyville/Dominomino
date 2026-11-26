@@ -27,6 +27,13 @@ const KINDS := {
 	"uptick": preload("res://scripts/effects/effect_uptick.gd"),
 	"energy": preload("res://scripts/effects/effect_lose_energy.gd"),
 	"endturn": preload("res://scripts/effects/effect_end_turn.gd"),
+	"addhand": preload("res://scripts/effects/effect_add_hand.gd"),
+	"replay": preload("res://scripts/effects/effect_replay.gd"),
+	"drawattack": preload("res://scripts/effects/effect_draw_attack.gd"),
+	"typedmg": preload("res://scripts/effects/effect_typed_damage.gd"),
+	"playeddmg": preload("res://scripts/effects/effect_played_damage.gd"),
+	"scrap": preload("res://scripts/effects/effect_scrap.gd"),
+	"berserk": preload("res://scripts/effects/effect_berserk.gd"),
 }
 
 

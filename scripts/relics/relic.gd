@@ -30,6 +30,13 @@ extends "res://scripts/model.gd"
 ##   stalwart (v turns of doubled shields)  regenerative (v turns of doubled healing)
 ##   revive (gain v lives and heal half your max HP; for the "death" hook)
 ##   death     on_death          you are about to lose (HP 0 or no lives): a chance to be saved
+## COUNTERS: a row can have "count": {...} and the relic shows a number on its icon.
+##   {"mode": "down", "start": 3}   the counter starts at 3 and goes down by 1 each time the relic works; at 0 it
+##                                  breaks. With "vc": true the amount is "v" times the counter (Fragile Gauntlet gives
+##                                  3 Power, then 2, then 1, then it is gone).
+##   {"mode": "up", "every": 3, "event": "attack", "reset": "turn"}   counts the attacks ("attack"), skills ("skill") or
+##                                  all dominoes ("play") you play; every 3 it does its action and the counter drops by 3.
+##                                  "reset": "turn" sets it back to 0 at the start of every turn. It never breaks.
 ## A row with "breaks": true crumbles after it has done its action once (it leaves your inventory for good).
 ## Passive keys: ignore_hand (every "you must hold N dominoes" condition on your dominoes is ignored), max_energy (energy you get each turn), max_hp (more max HP), rewards (extra dominoes offered
 ## after a battle), gems (extra gems after a battle), shop_discount (gems off every shop price) and rewind
@@ -61,6 +68,12 @@ var weapon := false
 var starter := false      # you start the run with it: never offered as a reward or sold
 var adds := []
 var breaks := false       # it crumbles after it has done its action once
+var counter := 0                 # the number shown on the icon (see COUNTERS above)
+var counter_mode := ""           # "" (no counter), "down" or "up"
+var counter_every := 0           # up counters: the number it counts up to before it works
+var counter_event := "play"      # up counters: attack, skill or play
+var counter_reset := ""          # up counters: "turn" resets it at the start of every turn
+var counter_scales := false      # down counters: the amount is v times the counter
 var level := 1            # weapons only: 1 is normal, 0 downgraded, up to 4 / 3 / 2 for common / uncommon / rare
 
 const RARITY_NAMES := {"c": "Common", "u": "Uncommon", "r": "Rare"}
@@ -82,6 +95,13 @@ func setup(row: Dictionary, icons) -> void:
 	act = row.get("do", "")
 	priority = int(row.get("prio", 0))
 	breaks = bool(row.get("breaks", false))
+	var cnt: Dictionary = row.get("count", {})
+	counter_mode = cnt.get("mode", "")
+	counter = int(cnt.get("start", 0))
+	counter_every = int(cnt.get("every", 0))
+	counter_event = cnt.get("event", "play")
+	counter_reset = cnt.get("reset", "")
+	counter_scales = bool(row.get("vc", false))
 
 
 func is_relic() -> bool:
@@ -144,8 +164,50 @@ func plain_text() -> String:
 	return re.sub(text, "$1", true).replace("_", " ")
 
 
+## What the relic does with its amount: v, or v times the counter for a down counter that scales.
+func _amount() -> int:
+	return amount * counter if counter_mode == "down" and counter_scales else amount
+
+
+## The number on the relic's icon: the counter, or "2/3" for a counter that counts up. "" for no counter.
+func counter_text() -> String:
+	match counter_mode:
+		"down":
+			return str(counter)
+		"up":
+			return "%d/%d" % [counter, counter_every]
+	return ""
+
+
+## One line about the counter for the info window ("" for no counter).
+func counter_line() -> String:
+	match counter_mode:
+		"down":
+			return "Counter: %d. It goes down by 1 each time this works and the artifact breaks at 0." % counter
+		"up":
+			var what: String = {"attack": "attacks", "skill": "skills", "play": "dominoes"}.get(counter_event, "dominoes")
+			return "Counter: %d of %d %s played%s." % [counter, counter_every, what, " this turn" if counter_reset == "turn" else ""]
+	return ""
+
+
+func reset_up_counter() -> void:
+	if counter_mode == "up" and counter_reset == "turn":
+		counter = 0
+
+
+## Does this played domino count for an up counter? (ctx comes from the domino_played event)
+func _counts(ctx: Dictionary) -> bool:
+	match counter_event:
+		"attack":
+			return ctx.get("attack", false)
+		"skill":
+			return not ctx.get("attack", false)
+	return true
+
+
 func tooltip() -> String:
-	return "%s (%s %s)\n%s" % [title, rarity_name(), kind_name(), plain_text()]
+	var extra := counter_line()
+	return "%s (%s %s)\n%s%s" % [display_name(), rarity_name(), kind_name(), plain_text(), "\n" + extra if extra != "" else ""]
 
 
 ## How much this relic adds to a passive number (0 if it is not a passive for that key).
@@ -154,10 +216,13 @@ func passive_value(key: String) -> int:
 
 
 func on_battle_start(game, ctx: Dictionary) -> void:
+	if counter_mode == "up":
+		counter = 0
 	trigger(game, "battle", ctx)
 
 
 func on_turn_start(game, ctx: Dictionary) -> void:
+	reset_up_counter()
 	trigger(game, "turn", ctx)
 
 
@@ -166,6 +231,14 @@ func on_turn_end(game, ctx: Dictionary) -> void:
 
 
 func on_domino_played(game, ctx: Dictionary) -> void:
+	if counter_mode == "up":
+		if _counts(ctx):
+			counter += 1
+			if counter >= counter_every:
+				counter -= counter_every
+				if _holds(game, ctx):
+					_do(game)
+		return
 	trigger(game, "play", ctx)
 
 
@@ -188,6 +261,11 @@ func trigger(game, which: String, ctx: Dictionary = {}) -> void:
 			return
 		game.history.add("relic_fired", {"relic": id})
 	_do(game)
+	if counter_mode == "down":
+		counter -= 1
+		if counter <= 0:
+			game.break_relic(self)
+			return
 	if breaks:
 		game.break_relic(self)
 
@@ -229,43 +307,44 @@ func _holds(game, ctx: Dictionary) -> bool:
 
 
 func _do(game) -> void:
+	var n := _amount()
 	match act:
 		"energy":
-			game.gain_energy(amount)
+			game.gain_energy(n)
 		"shield":
-			game.gain_shield(amount)
+			game.gain_shield(n)
 		"max_shield":
-			CreatureCmd.gain_max_shield(game, game.pl, amount)
+			CreatureCmd.gain_max_shield(game, game.pl, n)
 		"draw":
 			if hook == "play":
-				game.relic_draw(amount)
+				game.relic_draw(n)
 			else:
 				# turn and battle hooks only count the extra cards: game.gd draws them with the others
-				game.bat.extra_draw += amount
+				game.bat.extra_draw += n
 		"fury":
-			PowerCmd.apply(game, game.pl, "fury", amount)
+			PowerCmd.apply(game, game.pl, "fury", n)
 		"power":
-			PowerCmd.apply(game, game.pl, "power", amount)
+			PowerCmd.apply(game, game.pl, "power", n)
 		"boost":
-			PowerCmd.apply(game, game.pl, "boost", amount)
+			PowerCmd.apply(game, game.pl, "boost", n)
 		"impair":
-			PowerCmd.apply(game, game.foe, "fury", -amount)
+			PowerCmd.apply(game, game.foe, "fury", -n)
 		"heal":
-			CreatureCmd.heal(game, game.pl, amount)
+			CreatureCmd.heal(game, game.pl, n)
 		"damage":
-			DamageCmd.deal(game, game.pl, game.foe, amount, false, "relic")
+			DamageCmd.deal(game, game.pl, game.foe, n, false, "relic")
 		"restack":
-			game.restack_random(amount)
+			game.restack_random(n)
 		"max_hp":
-			CreatureCmd.gain_max_hp(game, game.pl, amount)
+			CreatureCmd.gain_max_hp(game, game.pl, n)
 		"life":
-			game.gain_life(amount)
+			game.gain_life(n)
 		"stalwart":
-			PowerCmd.apply(game, game.pl, "stalwart", amount)
+			PowerCmd.apply(game, game.pl, "stalwart", n)
 		"regenerative":
-			PowerCmd.apply(game, game.pl, "regenerative", amount)
+			PowerCmd.apply(game, game.pl, "regenerative", n)
 		"revive":
-			game.gain_life(amount)
+			game.gain_life(n)
 			CreatureCmd.heal(game, game.pl, ceili(game.pl.max_hp / 2.0))
 		_:
 			push_error("unknown relic action: " + act)

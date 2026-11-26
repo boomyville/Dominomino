@@ -291,7 +291,7 @@ func _sync_relics(game) -> void:
 	var shown: Array = ([game.weapon] if game.weapon != null else []) + game.relics
 	var ids := []
 	for r in shown:
-		ids.append(r.id)
+		ids.append("%s:%d:%s" % [r.id, r.level, r.counter_text()])      # a new level or counter redraws the icon
 	if ids == _relic_ids:
 		return
 	_relic_ids = ids
@@ -307,7 +307,24 @@ func _sync_relics(game) -> void:
 		icon.mouse_filter = Control.MOUSE_FILTER_STOP
 		icon.tooltip_text = r.tooltip()
 		icon.gui_input.connect(_on_relic_input.bind(r))
+		if r.counter_text() != "":
+			icon.add_child(_counter_badge(r.counter_text()))     # the counter, in the corner of the icon
 		relic_bar.add_child(icon)
+
+
+## The small number in the bottom right corner of an artifact that has a counter.
+func _counter_badge(text: String) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 11)
+	l.add_theme_color_override("font_color", Color.BLACK)
+	l.add_theme_color_override("font_outline_color", Color.WHITE)
+	l.add_theme_constant_override("outline_size", 4)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	l.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	l.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	return l
 
 
 func _on_relic_input(event: InputEvent, relic) -> void:

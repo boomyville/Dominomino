@@ -1,5 +1,5 @@
 extends RefCounted
-## The relic catalogue: 43 relics. Edit the table to rebalance or add one (see relic.gd for what
+## The relic catalogue: 48 relics. Edit the table to rebalance or add one (see relic.gd for what
 ## "on", "if" and "do" can be). Each row: {n: name, r: rarity (c, u, r), on: hook, if: condition,
 ## do: action, v: amount, pip: pip number for the "pip" condition, once: once per turn, breaks: true to crumble
 ## after doing its action once, text}.
@@ -103,19 +103,30 @@ const TABLE := [
 		"text": "Does nothing until you would lose the run. Then gain 3 lives, heal half your max HP, and the Lizard Tail crumbles."},
 	{"n": "Last Meal", "r": "c", "on": "turn", "if": "halfHp", "do": "heal", "v": 8, "breaks": true,
 		"text": "At the start of your turn, if you have half your HP or less, heal 8 HP. Then it is eaten and gone."},
-	{"n": "Emergency Bulwark", "r": "c", "on": "battle", "do": "shield", "v": 15, "breaks": true,
-		"text": "Gain 15 :shield: at the start of the next battle. Then it falls apart."},
-	{"n": "Fragile Gauntlet", "r": "u", "on": "battle", "do": "power", "v": 3, "breaks": true,
-		"text": "Start the next battle with 3 :power:. Then the gauntlet shatters."},
+	{"n": "Emergency Bulwark", "r": "c", "on": "battle", "do": "shield", "v": 5, "vc": true, "count": {"mode": "down", "start": 3},
+		"text": "Start every battle with 5 :shield: for each point on its counter (15, then 10, then 5). The counter goes down by 1 every time and it breaks at 0."},
+	{"n": "Fragile Gauntlet", "r": "u", "on": "battle", "do": "power", "v": 1, "vc": true, "count": {"mode": "down", "start": 3},
+		"text": "Start every battle with :power: equal to its counter (3, then 2, then 1). The counter goes down by 1 every time and it breaks at 0."},
+	{"n": "Dwindling Flame", "r": "c", "on": "battle", "do": "fury", "v": 1, "vc": true, "count": {"mode": "down", "start": 4},
+		"text": "Start every battle with :fury: equal to its counter (4, 3, 2, 1). The counter goes down by 1 every time and it breaks at 0."},
+	{"n": "Waning Phial", "r": "c", "on": "battle", "do": "heal", "v": 3, "vc": true, "count": {"mode": "down", "start": 3},
+		"text": "Start every battle by healing 3 HP for each point on its counter (9, 6, 3). The counter goes down by 1 every time and it breaks at 0."},
+	# ---- counters that count up and never break
+	{"n": "Spiked Buckler", "r": "c", "on": "play", "do": "shield", "v": 3, "count": {"mode": "up", "every": 3, "event": "attack", "reset": "turn"},
+		"text": "Every 3 attack dominoes you play, gain 3 :shield:. The counter starts again at 0 every turn."},
+	{"n": "Scribe's Quill", "r": "u", "on": "play", "do": "draw", "v": 1, "count": {"mode": "up", "every": 3, "event": "skill", "reset": "turn"},
+		"text": "Every 3 skill dominoes you play, draw 1 domino. The counter starts again at 0 every turn."},
+	{"n": "Tally Stick", "r": "u", "on": "play", "do": "energy", "v": 1, "count": {"mode": "up", "every": 4, "event": "play", "reset": "turn"},
+		"text": "Every 4 dominoes you play, gain 1 :energy:. The counter starts again at 0 every turn."},
 ]
 
 ## The weapons. You own as many as you find but only ONE is equipped: it adds its dominoes to the
 ## stack or your hand (see relic.gd). They are never unequipped, only replaced by another weapon.
 const WEAPONS := [
 	{"n": "Short Sword", "r": "c", "weapon": true, "starter": true,
-		"adds": [{"t": "Slash", "n": 3, "when": "battle", "pos": "stack"},
+		"adds": [{"t": "Sword Slash", "n": 3, "when": "battle", "pos": "stack"},
 				{"t": "Quick Strike", "n": 2, "when": "battle", "pos": "stack"}],
-		"text": "Adds 3 Slash and 2 Quick Strike to your stack at the start of every battle."},
+		"text": "Adds 3 Sword Slash and 2 Quick Strike to your stack at the start of every battle."},
 	{"n": "Long Sword", "r": "u", "weapon": true,
 		"adds": [{"t": "Heavy Blade", "n": 2, "when": "battle", "pos": "bottom"}],
 		"text": "Adds 2 Heavy Blade to the BOTTOM of your stack at the start of every battle."},

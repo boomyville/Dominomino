@@ -146,6 +146,11 @@ func new_domino(exclude: Array = []):
 	return make_domino(Dominoes.rand_type(rng, exclude))
 
 
+## A domino of this kind by name, at level 1 (for effects that make dominoes).
+func make_named(title: String):
+	return make_domino(Dominoes.index_of(title))
+
+
 func garbage():
 	return make_domino(Dominoes.GARBAGE)
 
@@ -159,6 +164,7 @@ func starter_collection() -> Array:
 
 
 func start_battle() -> void:
+	_strip_temporary_dominoes()
 	rng.seed = hash("battle:%d:%d" % [seed_value, battle_no])    # the same stack and plans every time
 	battle_snap = {"hp": pl.hp, "lives": lives, "stats": stats.duplicate(true)}
 	occ.clear()
@@ -223,6 +229,47 @@ func draw_one() -> bool:
 	return true
 
 
+## Draw a random domino of one type ("attack" or "skill") from the stack into your hand. False if there is none.
+func draw_matching(type_id: String) -> bool:
+	if hand.size() >= MAXH:
+		ui.hand_full()
+		return false
+	var found := []
+	for i in stack.size():
+		if stack[i].type() == type_id:
+			found.append(i)
+	if found.is_empty():
+		return false
+	var d = stack.pop_at(found[rng.randi() % found.size()])
+	_enter_hand(d, "stack")
+	stats.drawn += 1
+	emit("card_drawn", "after_card_drawn", {"title": d.data.title}, {"card": d})
+	return true
+
+
+## Play a domino from your hand again for free: its effects run `times` times, it does not go on the board, and then it
+## is discarded (Dual Wield, Barrage).
+func replay_domino(d, times: int) -> void:
+	var i := hand.find(d)
+	if i < 0:
+		return
+	hand.remove_at(i)
+	_cache.clear()
+	ui.refresh()
+	for t in times:
+		if foe.hp <= 0 or pl.hp <= 0:
+			break
+		history.add("domino_replayed", {"title": d.data.title})
+		await run_fx(d)           # (run_fx ends the attack: Fury ticks down for every play)
+		ui.refresh()
+		await ui.pause(0.3)
+	discard.append(d)
+	history.add("card_discarded", {"title": d.data.title})
+	ui.card_discarded(d)
+	_cache.clear()
+	ui.refresh()
+
+
 ## The one way a domino gets into the hand. source says where the UI shows it coming from:
 ## "stack" (the Stack button) or "top" (the top of the screen).
 func _enter_hand(d, source: String) -> void:
@@ -270,6 +317,7 @@ func _weapon_dominoes(when: String) -> Array:
 		var kind := Dominoes.index_of(add.t)
 		for i in add.n:
 			var d = make_domino(kind)
+			d.origin = "equipment"          # it belongs to the weapon: gone when the battle is over
 			d.set_level(weapon.level)       # the weapon's level (as far as this domino goes)
 			d.roll_all(rng)
 			out.append({"d": d, "pos": add.pos})
@@ -498,6 +546,7 @@ func restart_turn() -> bool:
 	history.load_saved(t.history)
 	stats = t.stats.duplicate(true)
 	rng.state = t.rng
+	_reset_counters()
 	lives = t.lives - 1
 	stats.lost += 1
 	busy = 0
@@ -905,6 +954,8 @@ func check_p(m: Dictionary) -> Dictionary:
 
 ## Does the hand domino at index i meet its play condition right now?
 func cond_ok(i: int) -> bool:
+	if pl.value("berserk") > 0 and hand[i].type() != "attack":
+		return false          # Berserk: only attack dominoes this turn
 	var c = hand[i].data.condition
 	if c != null and c.hand_size and relic_sum("ignore_hand") > 0:
 		return true           # Loose Grip: "you must hold N dominoes" does not matter
@@ -1341,12 +1392,24 @@ func stuck_check() -> void:
 ## this function hit a Godot 4.1 to 4.4 compiler bug that corrupted battle_no after the await.
 func battle_won() -> void:
 	busy = 3
+	_strip_temporary_dominoes()
 	var opts := _begin_reward()
 	await ui.victory(self, victory_summary)
 	await _reward_step(opts)
 	await ui.intermission(self)
 	_start_next_battle()
 	await stuck_check()
+
+
+## Dominoes made by equipment or by other dominoes belong to what made them: they never stay in your collection.
+func _strip_temporary_dominoes() -> void:
+	collection = collection.filter(func(d): return d.origin == "collection")
+
+
+## Counters that count up (and reset every turn) start from 0 again when a turn is restarted.
+func _reset_counters() -> void:
+	for r in relics:
+		r.reset_up_counter()
 
 
 ## The reward. Usually: pick a domino (or skip). With RELIC_CHANCE it is a choice first: a domino

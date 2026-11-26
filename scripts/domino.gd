@@ -19,6 +19,9 @@ var specs: Array = []  # [PipSpec, PipSpec] the core pips
 var a := 0           # current pips on the first half
 var b := 0           # current pips on the second half
 var rolled := false  # have the unstable / volatile halves been given a value this battle?
+## Where it came from: "collection" (yours), "equipment" (made by a weapon or an artifact) or "created" (made by
+## another domino). Only the first stays after the battle: the others belong to what made them.
+var origin := "collection"
 var ang := 0         # how far it is turned in the hand (degrees, adds up so it never spins backwards)
 
 
@@ -56,6 +59,16 @@ func can_upgrade() -> bool:
 
 func can_downgrade() -> bool:
 	return data != null and data.max_level() > 1 and data.level > 0
+
+
+## "attack" or "skill" (see DominoData.type).
+func type() -> String:
+	return data.type() if data != null else "skill"
+
+
+## Made by a weapon or an artifact (it is removed at the end of the battle with the rest of its equipment).
+func is_equipment() -> bool:
+	return origin == "equipment"
 
 
 ## Jump to a level (0 up to the highest this kind has).
@@ -200,4 +213,5 @@ func copy():
 	c.a = a
 	c.b = b
 	c.rolled = rolled
+	c.origin = origin
 	return c

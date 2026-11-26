@@ -120,7 +120,7 @@ corner (`+`, `++`, `+++`, or a red `-`), see `DominoArt.sides`.
 ## Weapon levels, breaking artifacts, no repeated dominoes
 - **Weapons have levels** like dominoes (`Relic.level`, `upgrade()`, `downgrade()`, `display_name()`): a common weapon can go up 3 times
   (level 4), an uncommon one twice, a rare one once, and down to level 0. The dominoes a weapon adds are made at the weapon's level
-  (`Game._weapon_dominoes`, as far as they can go; weapon dominoes can reach level 4). A shop has a 10% chance of also offering
+  (`Game._weapon_dominoes`, as far as they can go; a weapon domino has the tier of its weapon). A shop has a 10% chance of also offering
   "upgrade a weapon" for 6 gems (`Game.WEAPON_UPGRADE_CHANCE`): you choose from the weapons you own, equipped or stored.
 - **A shop never sells the same domino twice, and the reward screen never offers a domino the shop sells** (nor the same one twice):
   `Dominoes.rand_type(rng, exclude)`, `Game.new_domino(exclude)`.
@@ -140,6 +140,23 @@ upgrade levels, and plays every domino at every level once). For a table of ever
 `godot --headless -s tools/balance_report.gd` (add `-- all` for every level). To change numbers on purpose, edit `dominoes.gd`, run the
 report until nothing says TOO STRONG or TOO WEAK, then run `tools/dump_domino_values.gd` to rewrite
 `tests/fixtures/domino_values.json` (the test in test_rules.gd that stops accidental changes).
+
+## Attack and skill dominoes, counters, equipment dominoes
+- **Types:** every domino is an **attack** (it has a damage effect, a hit, pip damage ...) or a **skill** (everything else). `DominoData.type()`,
+  `Domino.type()`. Weapon, regular and created dominoes all count. The info card says it ("Common attack").
+- **Weapon dominoes** have rarity `w` and a `"tier"` (c, u, r): the rarity of their weapon. The tier sets how far they level up (common 4, uncommon 3,
+  rare 2, the same as the weapon) and their balance target, which is 20% above a regular domino of that rarity (`Balance.WEAPON_BONUS`).
+  A weapon's `adds` list can mix weapon-only dominoes and regular ones (the Short Sword adds Sword Slash, a better Slash).
+- **Equipment tag:** `Domino.origin` is `"collection"` (yours), `"equipment"` (made by a weapon or artifact) or `"created"` (made by a domino, like a Phantom Shiv).
+  Only the first stays: `Game._strip_temporary_dominoes()` removes the others from the collection when a battle ends or starts.
+  `Domino.is_equipment()` is what Dual Wield looks for.
+- **Counters on artifacts** (`"count"` in a relic row, see relic.gd): a **down** counter (`{"mode": "down", "start": 3}`) goes down by 1 each time the
+  artifact works and breaks it at 0; with `"vc": true` the amount is `v` times the counter (Fragile Gauntlet gives 3, 2, then 1 Power). An **up** counter
+  (`{"mode": "up", "every": 3, "event": "attack", "reset": "turn"}`) counts the attacks, skills or dominoes you play, works every 3 and resets to 0 at the start
+  of every turn (Spiked Buckler: every 3 attacks, 3 shield). The number shows on the artifact's icon (`Relic.counter_text()`).
+- **Berserk** is a status (`only attack dominoes can be played`, checked in `Game.cond_ok`) that goes down 1 at the start of each turn.
+  The Berserk domino spells its levels out with `"levels"` in its row. **Dual Wield** and **Barrage** use the `replay` effect (`Game.replay_domino`: play a
+  domino from your hand for free, it does not go on the board, then discard it). Others: `addhand` (Phantom Blades), `typedmg`, `playeddmg`, `scrap`, `drawattack`.
 
 ## The screen
 Everything except the board is a scene made of containers, styled by one theme (`themes/main_theme.tres`):
@@ -213,6 +230,7 @@ godot --headless -s tests/test_pips.gd           # stable / unstable / volatile 
 godot --headless -s tests/test_upgrades.gd       # levels, downgrades, the shop upgrade, level tag, deselecting, game over table
 godot --headless -s tests/test_weapons.gd        # weapon levels, weapon upgrade in the shop, no repeats, new artifacts
 godot --headless -s tests/test_balance.gd        # every domino near its target strength, every level plays
+godot --headless -s tests/test_equipment.gd      # weapon tiers, equipment tag, types, counters, Berserk, type dominoes
 ```
 
 ## Rewards, healing and the screen between battles

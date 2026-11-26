@@ -4,6 +4,8 @@ extends RefCounted
 ## domino has them without being written out; they are built the first time a level is needed
 ## (DominoData.at_level).
 ##
+## A catalogue row can spell out a level itself with "levels": {"0": {"c": "first"}, "2": {"fx": [...]}}: the keys
+## of that level replace the row's (see Berserk). Levels it does not list are worked out as below.
 ## UPGRADE (level 2 and up): every helpful number (damage, shield, heal, draw ...) rises by about a third of its
 ## value per level (6 damage becomes 8, then 10 ...). From level 3 a small extra effect is added too: draw a domino,
 ## gain 1 max shield or heal 1 HP. A domino with no number to raise (it only rerolls, say) gets an extra
@@ -23,7 +25,8 @@ const UP_STEP := 0.33      # share of a number added per level above 1
 const DOWN_STEP := 0.3     # share of a number taken away by the downgrade
 
 ## The effects whose number is something you want (these go up with a level and down with the downgrade).
-const SCALES := ["dmg", "hit", "shield", "maxs", "draw", "tutor", "power", "boost", "heal", "fury", "impE", "pipdmg"]
+const SCALES := ["dmg", "hit", "shield", "maxs", "draw", "tutor", "power", "boost", "heal", "fury", "impE", "pipdmg",
+		"addhand", "typedmg", "playeddmg", "scrap", "drawattack"]
 
 const BONUS := [
 	{"k": "draw", "m": "K", "a": 0, "b": 1},
@@ -56,6 +59,14 @@ static func variant(base, level: int):
 static func level_row(row: Dictionary, level: int) -> Dictionary:
 	if level == 1:
 		return row
+	var patches: Dictionary = row.get("levels", {})
+	if patches.has(str(level)):
+		# a domino can spell a level out: "levels": {"0": {...}, "2": {...}} replaces those keys of the row
+		var custom: Dictionary = row.duplicate(true)
+		custom.erase("levels")
+		for k in patches[str(level)]:
+			custom[k] = patches[str(level)][k]
+		return custom
 	var out: Dictionary = row.duplicate(true)
 	var fx: Array = out.fx
 	var h := name_hash(row.n)
