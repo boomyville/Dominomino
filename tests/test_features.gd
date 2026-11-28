@@ -746,7 +746,7 @@ func _tests() -> void:
 	expect(qs[0].total() == 2 and qs[0].data.ephemeral, "Quick Strike has small pips (2 energy) and is ephemeral")
 	g = fresh()
 	g.add_relic(Relics.by_id("time_pendant"))
-	expect(Relics.by_id("short_sword").weapon and Relics.build_weapons().size() == 5, "5 weapons")
+	expect(Relics.by_id("short_sword").weapon and Relics.build_weapons().size() == 8, "8 weapons")
 	var cases := [["long_sword", "Heavy Blade", 2, "bottom"], ["shining_blade", "Cutting Edge", 1, "top"], ["sawtooth_blade", "Rip and Shred", 2, "any"]]
 	for c in cases:
 		g = Game.new()
@@ -783,7 +783,7 @@ func _tests() -> void:
 	expect(200 - g.foe.hp == 12, "Cutting Edge: 3 hits of 4 = 12 damage")
 	# rapier: En Garde at the start of EVERY turn, and it is ephemeral
 	g = Game.new()
-	g.weapon = Relics.by_id("rapier")
+	g.weapon = Relics.by_id("duelists_blade")
 	g.start_battle()
 	var eg := 0
 	for d in g.hand:
@@ -805,7 +805,7 @@ func _tests() -> void:
 	var lw = Relics.by_id("long_sword")
 	g.stored_weapons.append(lw)
 	expect(g.equip_weapon(lw) and g.weapon == lw and g.stored_weapons.size() == 1 and g.stored_weapons[0].title == "Short Sword", "equipping a weapon swaps it with the old one")
-	expect(not g.equip_weapon(Relics.by_id("rapier")), "you can only equip a weapon you own")
+	expect(not g.equip_weapon(Relics.by_id("duelists_blade")), "you can only equip a weapon you own")
 	expect(g.relic_ids().has("long_sword") and g.relic_ids().has("short_sword"), "owned weapons count as owned")
 
 	# ---------- the Time Pendant ----------

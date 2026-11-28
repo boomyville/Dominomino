@@ -158,6 +158,24 @@ report until nothing says TOO STRONG or TOO WEAK, then run `tools/dump_domino_va
   The Berserk domino spells its levels out with `"levels"` in its row. **Dual Wield** and **Barrage** use the `replay` effect (`Game.replay_domino`: play a
   domino from your hand for free, it does not go on the board, then discard it). Others: `addhand` (Phantom Blades), `typedmg`, `playeddmg`, `scrap`, `drawattack`.
 
+## Title screen, saving, the library, boons
+- **Title screen** (`title_screen.tscn`, shown by `Hud.show_title`): New game, Load game (greyed out without a save), Achievements (later), Library, Settings,
+  Quit game. The game starts there; the **Menu** button in the game goes back to it (after saving). `main.gd` runs the flows: `_start_new_run`, `_load_run`.
+- **New run:** `Game.new_game(-1, false)` sets the run up without starting a battle, then `Game.run_intro()`: you choose 1 of 3 random **boons**
+  (`scripts/boons.gd`: upgrade 3 dominoes, remove 2, +20 max HP, a rare domino screen, a common weapon / artifact screen, an uncommon weapon / artifact,
+  Beginner's Luck), then 3 reward screens that only offer common dominoes, then the first battle. A weapon from a boon is equipped at once.
+- **Saving** (`scripts/save_game.gd`, `user://save.dat`): written at the start of every turn (`Game.snapshot_turn` calls `ui.autosave_point()`) and when the run
+  ends, so Load game puts you back at the start of the turn you were in (a run that ended is saved at the start of the turn you lost in). It stores the
+  collection, artifacts and weapons (with levels and counters) and the turn snapshot (piles, board, both fighters, random numbers).
+- **Library** (`scripts/library.gd`, `user://library.dat`; `library_window.gd`): tabs for dominoes, artifacts and weapons with their effects and numbers: offered and
+  skipped in reward screens, offered in shops and skipped when you could afford them, and for dominoes how often they were played and how many turns
+  they waited in your hand before that (`Domino.hand_turn`). `Library.flush()` writes the numbers at every autosave point. Tests point `Library.path` and
+  `SaveGame.path` at other files.
+- **Legendary** dominoes (rarity `l`, Beginner's Luck) are only given by boons, cannot be upgraded, but have a downgrade (`DominoData.lowest_level`).
+- **Weapons:** the common weapons are Short Sword, Rapier (Rapier Thrust removes the enemy's shield first), Machete (Machete Chop does double damage to an enemy with
+  no shield) and Swift Sword (Swift Strike goes on top of the stack, only on turn 1, hits hard, draws 3 and discards 3). The old uncommon Rapier is now the Duelist's Blade.
+- **A second before the victory screen:** `Game.battle_won` pauses for 1 second (scaled by the animation speed) so the last animations can play.
+
 ## The screen
 Everything except the board is a scene made of containers, styled by one theme (`themes/main_theme.tres`):
 
@@ -231,6 +249,7 @@ godot --headless -s tests/test_upgrades.gd       # levels, downgrades, the shop 
 godot --headless -s tests/test_weapons.gd        # weapon levels, weapon upgrade in the shop, no repeats, new artifacts
 godot --headless -s tests/test_balance.gd        # every domino near its target strength, every level plays
 godot --headless -s tests/test_equipment.gd      # weapon tiers, equipment tag, types, counters, Berserk, type dominoes
+godot --headless -s tests/test_title.gd          # title screen, library numbers, saving and loading, boons, new run, new weapons
 ```
 
 ## Rewards, healing and the screen between battles

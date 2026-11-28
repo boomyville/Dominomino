@@ -14,6 +14,10 @@ signal end_turn_pressed
 signal ok_pressed
 signal cancel_pressed
 signal new_game_pressed
+signal title_new_game_pressed
+signal title_load_game_pressed
+signal quit_pressed
+signal menu_pressed
 signal restart_battle_pressed
 signal rewind_turn_pressed
 signal domino_tapped(view)
@@ -47,6 +51,9 @@ const IDLE_RESET_MS := 10000
 @onready var settings_b: Button = %SettingsButton
 @onready var stack_b: Button = %StackButton
 @onready var discard_b: Button = %DiscardButton
+@onready var menu_b: Button = %MenuButton
+@onready var title_screen = %TitleScreen
+@onready var library_window = %LibraryWindow
 @onready var fly_layer: Control = %FlyLayer
 @onready var modal_layer: Control = %ModalLayer
 @onready var dim: ColorRect = %Dim
@@ -95,6 +102,13 @@ func _ready() -> void:
 	intermission_window.shop_pressed.connect(func(): open_shop(_game))
 	stack_b.pressed.connect(func(): open_stack(_game, true))
 	discard_b.pressed.connect(func(): open_discard(_game))
+	menu_b.pressed.connect(func(): menu_pressed.emit())
+	title_screen.new_game_pressed.connect(func(): title_new_game_pressed.emit())
+	title_screen.load_game_pressed.connect(func(): title_load_game_pressed.emit())
+	title_screen.quit_pressed.connect(func(): quit_pressed.emit())
+	title_screen.settings_pressed.connect(open_settings)
+	title_screen.library_pressed.connect(open_library)
+	library_window.closed.connect(_sync_modal)
 	settings_window.changed.connect(_on_settings_changed)
 	for w in [settings_window, stack_window, inventory_window]:
 		w.closed.connect(_sync_modal)
@@ -411,6 +425,21 @@ func pick(game, title: String, sub: String, list: Array, skip: String = "") -> i
 
 ## ---- modal windows ------------------------------------------------------
 
+## The title screen covers everything until a run starts. has_save enables Load game.
+func show_title(has_save: bool) -> void:
+	title_screen.set_has_save(has_save)
+	title_screen.visible = true
+
+
+func hide_title() -> void:
+	title_screen.visible = false
+
+
+func open_library() -> void:
+	library_window.open(_game)
+	_sync_modal()
+
+
 func open_settings() -> void:
 	settings_window.open(_game)
 	_sync_modal()
@@ -425,6 +454,7 @@ func open_shop(game) -> void:
 
 func _on_shop_closed() -> void:
 	if _game != null:
+		_game.leave_shop()                 # the library notes what you could afford and left
 		_game.shop_pending = false         # you have been to the shop: now it is Next battle
 		intermission_window.show_stats(_game)
 	_sync_modal()
@@ -474,7 +504,7 @@ func intermission(game) -> void:
 ## The modal layer is only there (and only blocks the game under it) while a window is open.
 func _sync_modal() -> void:
 	var any: bool = settings_window.visible or stack_window.visible or inventory_window.visible \
-			or intermission_window.visible or victory_window.visible or shop_window.visible
+			or intermission_window.visible or victory_window.visible or shop_window.visible or library_window.visible
 	modal_layer.visible = any
 	dim.visible = not intermission_window.visible
 

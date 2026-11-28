@@ -12,6 +12,8 @@ const Game = preload("res://scripts/game.gd")
 const DominoArt = preload("res://scripts/domino_art.gd")
 const HudScene = preload("res://scenes/hud.tscn")
 const Settings = preload("res://scripts/settings.gd")
+const SaveGame = preload("res://scripts/save_game.gd")
+const Library = preload("res://scripts/library.gd")
 
 const VIEW := Vector2(960, 540)
 const ORIGIN := Vector2(480, 56)   # top vertex of the board diamond
@@ -33,6 +35,7 @@ var enemy_tex: Texture2D
 var dot_tex: Texture2D
 var font: Font
 var time_scale := 1.0      # tests speed the waits up
+var run_active := false    # a run is going (New game or Load game was pressed): only then is it saved
 
 var sel := -1              # selected hand index
 var drag = null            # {i, x, y, rot, a, b, on}
@@ -69,10 +72,12 @@ func _ready() -> void:
 	hud.domino_drag_moved.connect(_on_drag_moved)
 	hud.domino_drag_released.connect(_on_drag_released)
 	hud.domino_rotate_requested.connect(_on_rotate_requested)
-	for d in game.hand:      # the first hand flies in too
-		hud.queue_entry(d, "stack")
+	hud.title_new_game_pressed.connect(_start_new_run)
+	hud.title_load_game_pressed.connect(_load_run)
+	hud.quit_pressed.connect(func(): get_tree().quit())
+	hud.menu_pressed.connect(_open_menu)
 	_refresh_ui()
-	game.stuck_check()
+	hud.show_title(SaveGame.exists())      # the game starts at the title screen (the run begins with New game or Load game)
 
 
 func _tex(path: String) -> Texture2D:
@@ -142,6 +147,49 @@ func swing(who: String) -> void:
 
 func fresh(_index: int) -> void:
 	pass
+
+
+## The start of a turn, or the end of the run: write the save (and the library numbers) if a run is going.
+func autosave_point() -> void:
+	if run_active:
+		SaveGame.write(game)
+		Library.flush()
+
+
+## New game: set the run up, then the boon and the starting rewards, then the first battle.
+func _start_new_run() -> void:
+	hud.hide_title()
+	hud.cancel_animations()
+	run_active = false
+	game.new_game(-1, false)
+	_clear_input()
+	_refresh_ui()
+	await game.run_intro()
+	run_active = true
+	_refresh_ui()
+	autosave_point()
+	game.stuck_check()
+
+
+## Load game: back to the start of the saved turn.
+func _load_run() -> void:
+	hud.cancel_animations()
+	if not SaveGame.read_into(game):
+		hud.toast("There is no saved game")
+		return
+	hud.hide_title()
+	run_active = true
+	_clear_input()
+	_refresh_ui()
+	game.stuck_check()
+
+
+## Menu button: save and go back to the title screen.
+func _open_menu() -> void:
+	if game.busy != 0 and not game.ended:
+		return
+	autosave_point()
+	hud.show_title(SaveGame.exists())
 
 
 ## A domino went into the hand: it flies in from the Stack button ("stack") or the top of the screen.
@@ -231,16 +279,7 @@ func _on_end_pressed() -> void:
 
 
 func _on_new_game() -> void:
-	hud.cancel_animations()
-	game.new_game()
-	sel = -1
-	drag = null
-	pending = null
-	pdrag = null
-	swing_fx = null
-	hud.set_ghost(false, null, Vector2.ZERO)
-	_refresh_ui()
-	game.stuck_check()
+	_start_new_run()       # (from the game over screen: a new run starts with a boon too)
 
 
 ## Forget any half-made move (selection, drag, placed-but-not-confirmed domino).

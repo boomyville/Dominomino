@@ -18,6 +18,8 @@ const Combatant = preload("res://scripts/combatant.gd")
 const Foe = preload("res://scripts/foe.gd")
 const NullUI = preload("res://scripts/null_ui.gd")
 const Relics = preload("res://scripts/relics/relics.gd")
+const Library = preload("res://scripts/library.gd")
+const Boons = preload("res://scripts/boons.gd")
 const AbstractModel = preload("res://scripts/model.gd")
 const CombatLog = preload("res://scripts/combat_log.gd")
 const DamageCmd = preload("res://scripts/cmd/damage_cmd.gd")
@@ -71,6 +73,7 @@ var battle_snap := {}     # the start of this battle (for Restart battle)
 var turn_snap := {}       # the start of this turn (for the Time Pendant)
 var relics := []          # equipped artifacts (only these do anything), at most EQUIP_SLOTS
 var stored_relics := []   # owned but not equipped
+var max_hp_bonus := 0     # extra max HP for the whole run (a boon)
 var relic_chance := RELIC_CHANCE
 var artifact_offered := false   # this victory offers the choice of a domino or an artifact
 var reward_note := ""           # what the last reward was, shown on the screen between battles
@@ -96,7 +99,9 @@ func _init() -> void:
 	new_game()
 
 
-func new_game(seed_override: int = -1) -> void:
+## begin = false is for the title screen flow: the run is set up but the first battle waits for run_intro() (the boon and the
+## starting rewards).
+func new_game(seed_override: int = -1, begin: bool = true) -> void:
 	seed_value = seed_override if seed_override >= 0 else 100000000 + randi() % 900000000
 	rng.seed = hash("run:%d" % seed_value)
 	collection = starter_collection()
@@ -118,12 +123,35 @@ func new_game(seed_override: int = -1) -> void:
 	lives = START_LIVES
 	ended = false
 	reason = ""
+	max_hp_bonus = 0
 	pl = Combatant.new(PLAYER_HP)
 	foe = Foe.new(1)
 	if starter_gear:
 		weapon = Relics.by_id("short_sword")
 		add_relic(Relics.by_id("time_pendant"))
+	if begin:
+		start_battle()
+
+
+## The start of a run (after new_game(-1, false)): choose 1 of 3 random boons, then 3 reward screens that only offer common
+## dominoes, then the first battle begins.
+func run_intro() -> void:
+	var boons: Array = Boons.pick(rng, 3)
+	var cards := []
+	for b in boons:
+		cards.append(Boons.card(b))
+	var c: int = await ui.pick("Choose a boon", "Pick one boon to start your run.", cards)
+	await Boons.apply(self, boons[clampi(c, 0, boons.size() - 1)])
+	var taken := []
+	for round in 3:
+		var opts := []
+		for i in 3:
+			var d = make_domino(Dominoes.rand_type_of("c", rng, taken))
+			taken.append(d.data.id)
+			opts.append(d)
+		await Boons.offer_dominoes(self, "Starting reward %d of 3" % (round + 1), "Choose a common domino to add to your stack, or skip.", opts)
 	start_battle()
+	ui.refresh()
 
 
 static func new_stats() -> Dictionary:
@@ -274,6 +302,7 @@ func replay_domino(d, times: int) -> void:
 ## "stack" (the Stack button) or "top" (the top of the screen).
 func _enter_hand(d, source: String) -> void:
 	d.ang = 0
+	d.hand_turn = history.turn
 	hand.append(d)
 	_cache.clear()
 	ui.card_entered(d, source)
@@ -503,6 +532,7 @@ func snapshot_turn() -> void:
 		"energy": energy, "lives": lives, "played": played_this_turn,
 		"bat": bat.duplicate(true), "history": history.save(), "stats": stats.duplicate(true), "rng": rng.state,
 	}
+	ui.autosave_point()
 
 
 func _states(pile: Array) -> Array:
@@ -695,7 +725,30 @@ func generate_shop() -> Array:
 	items.append({"kind": "upgrade", "mode": mode, "item": {"text": UPGRADE_TEXT[mode]}, "price": UPGRADE_PRICE[mode], "sold": false})
 	if rng.randf() < WEAPON_UPGRADE_CHANCE and not upgradable_weapons().is_empty():
 		items.append({"kind": "upgrade", "mode": "weapon", "item": {"text": UPGRADE_TEXT["weapon"]}, "price": UPGRADE_PRICE["weapon"], "sold": false})
+	for it in items:
+		if it.kind != "upgrade":
+			Library.offer(_library_kind(it.kind), _library_id(it), "shop")
 	return items
+
+
+## The library's name for a shop item's kind and the id it is listed under.
+func _library_kind(shop_kind: String) -> String:
+	return {"domino": "domino", "relic": "artifact", "weapon": "weapon"}[shop_kind]
+
+
+func _library_id(it: Dictionary) -> String:
+	return it.item.data.title if it.kind == "domino" else it.item.id
+
+
+## You are leaving the shop: everything you could have afforded but did not buy counts as skipped in the library.
+func leave_shop() -> void:
+	for i in shop.size():
+		var it: Dictionary = shop[i]
+		if it.kind == "upgrade" or it.sold or it.get("counted", false):
+			continue
+		it["counted"] = true
+		if gems >= shop_price(i):
+			Library.skip(_library_kind(it.kind), _library_id(it), "shop")
 
 
 ## What happened in the battle you just won, for the victory screen.
@@ -710,7 +763,7 @@ func _victory_numbers() -> Dictionary:
 
 ## Max HP at the start of a battle: the base plus artifacts that raise it.
 func base_max_hp() -> int:
-	return PLAYER_HP + relic_sum("max_hp")
+	return PLAYER_HP + max_hp_bonus + relic_sum("max_hp")
 
 
 ## A fresh Combatant for the next battle: no shield, no statuses, max shield back to normal, max HP
@@ -1241,6 +1294,7 @@ func play_domino(m: Dictionary) -> void:
 	# the played domino stays on the board: it does not go to the discard pile
 	var d = hand[m.i]
 	hand.remove_at(m.i)
+	Library.use(d.data.title, history.turn - d.hand_turn)       # the library: how long it waited in your hand
 	var played := history.add("domino_played", {"a": m.a, "b": m.b, "cost": ck.cost,
 			"attack": d.data.has_attack()})
 	var ctx := played.duplicate()
@@ -1393,6 +1447,8 @@ func stuck_check() -> void:
 func battle_won() -> void:
 	busy = 3
 	_strip_temporary_dominoes()
+	ui.refresh()
+	await ui.pause(1.0)      # a second for the last animations before the victory screen
 	var opts := _begin_reward()
 	await ui.victory(self, victory_summary)
 	await _reward_step(opts)
@@ -1458,12 +1514,17 @@ func _begin_reward() -> Array:
 		var d = new_domino(taken)
 		taken.append(d.data.id)
 		opts.append(d)
+	for d in opts:
+		Library.offer("domino", d.data.title, "reward")
 	reward_note = ""
 	artifact_offered = rng.randf() < relic_chance and not Relics.roll(relic_ids(), 1, rng).is_empty()
 	return opts
 
 
 func _take_domino(c: int, opts: Array) -> void:
+	for i in opts.size():
+		if i != c:
+			Library.skip("domino", opts[i].data.title, "reward")      # offered and not taken
 	if c >= 0:
 		var d = opts[c].copy()
 		collection.append(d)
@@ -1477,6 +1538,7 @@ func _give_random_relic() -> void:
 	if got.is_empty():
 		reward_note = "No artifacts left to find."
 		return
+	Library.offer("artifact", got[0].id, "reward")
 	var equipped := add_relic(got[0])
 	reward_note = "New artifact: %s (%s)" % [got[0].title, "equipped" if equipped else "unequipped, no free slot"]
 
@@ -1494,4 +1556,5 @@ func finish(r: String) -> void:
 	ended = true
 	busy = 0
 	stats.t1 = Time.get_ticks_msec()
+	ui.autosave_point()      # a run that ends is saved too (at the start of the turn you lost in)
 	ui.finished()

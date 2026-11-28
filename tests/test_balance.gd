@@ -9,8 +9,8 @@ const Foe = preload("res://scripts/foe.gd")
 const Dominoes = preload("res://scripts/dominoes.gd")
 const Balance = preload("res://scripts/balance.gd")
 
-## Dominoes that are meant to be out of the band: Garbage is worthless, Soul Tithe costs a life.
-const EXEMPT := ["Garbage", "Soul Tithe"]
+## Dominoes that are meant to be out of the band: Garbage is worthless, Soul Tithe costs a life, Beginner's Luck is legendary.
+const EXEMPT := ["Garbage", "Soul Tithe", "Beginner's Luck"]
 
 var fails := 0
 var checks := 0

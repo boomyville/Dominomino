@@ -63,9 +63,9 @@ func test_weapon_levels() -> void:
 	expect(n == 3 and common.level == 4 and common.display_name() == "Short Sword+++" and not common.can_upgrade(), "Short Sword: three upgrades")
 	expect(rare.upgrade() and not rare.upgrade() and rare.level == 2 and rare.display_name() == "Shining Blade+", "Shining Blade: one upgrade")
 	expect(uncommon.upgrade() and uncommon.upgrade() and not uncommon.upgrade(), "Long Sword: two upgrades")
-	var d = Relics.by_id("rapier")
+	var d = Relics.by_id("duelists_blade")
 	d.downgrade()
-	expect(d.level == 0 and d.display_name() == "Rapier-" and not d.downgrade(), "a weapon can be downgraded to level 0")
+	expect(d.level == 0 and d.display_name() == "Duelist's Blade-" and not d.downgrade(), "a weapon can be downgraded to level 0")
 	expect(d.level_line() == "Level 0 of 3: the dominoes it adds are level 0.", "the level line: %s" % d.level_line())
 	var artifact = Relics.by_id("iron_cloak")
 	expect(not artifact.upgrade() and not artifact.can_upgrade() and artifact.display_name() == "Iron Cloak", "artifacts have no levels")
@@ -128,7 +128,7 @@ func test_weapon_dominoes() -> void:
 	expect(high_damage > low_damage + 4, "upgraded weapon dominoes hit harder (%d instead of %d)" % [high_damage, low_damage])
 	# a weapon that adds to your hand every turn
 	var g3 := fresh()
-	g3.weapon = Relics.by_id("rapier")
+	g3.weapon = Relics.by_id("duelists_blade")
 	g3.weapon.upgrade()
 	g3._weapon_turn()
 	expect(g3.hand.size() == 1 and g3.hand[0].data.title == "En Garde" and g3.hand[0].level() == 2, "a Rapier adds its En Garde at the Rapier's level every turn")
@@ -161,7 +161,7 @@ func test_shop_weapon_upgrade() -> void:
 	g.shop = [{"kind": "upgrade", "mode": "weapon", "item": {"text": Game.UPGRADE_TEXT.weapon}, "price": 6, "sold": false}]
 	g.gems = 10
 	expect(g.can_buy(0) and not g.buy(0) and g.gems == 10, "a weapon upgrade needs you to choose a weapon")
-	expect(not g.buy(0, Relics.by_id("rapier")) and g.gems == 10, "it must be a weapon you own")
+	expect(not g.buy(0, Relics.by_id("duelists_blade")) and g.gems == 10, "it must be a weapon you own")
 	expect(g.upgradable_weapons().size() == 2, "the equipped weapon and the stored ones can be upgraded")
 	expect(g.buy(0, stored) and g.gems == 4 and stored.level == 2 and g.weapon.level == 1 and g.shop[0].sold, "choosing a stored weapon: 6 gems, that weapon goes up a level")
 	expect(g.shop_note.contains("Long Sword is now Long Sword+") and g.shop_note.contains("dominoes it adds"), "the shop says what happened: %s" % g.shop_note)

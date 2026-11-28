@@ -22,6 +22,15 @@ static func gain_shield(game, target, n: int) -> void:
 	game.ui.float_text(side, "+%d shield" % n)
 
 
+## Remove all of a creature's shield. silent = true is for previews on copies.
+static func break_shield(game, target, silent: bool = false) -> void:
+	if target.shield <= 0:
+		return
+	target.shield = 0
+	if not silent and game != null:
+		game.ui.float_text(game.side_of(target), "Shield broken")
+
+
 static func gain_max_shield(game, target, n: int) -> void:
 	target.max_shield += n
 	game.ui.float_text(game.side_of(target), "Max shield +%d" % n)

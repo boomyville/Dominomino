@@ -264,7 +264,7 @@ func _initialize() -> void:
 	await process_frame
 	expect(ndone[0], "Next battle carries on")
 	# ---- inventory shows the weapon
-	g.stored_weapons.append(Relics.by_id("rapier"))
+	g.stored_weapons.append(Relics.by_id("duelists_blade"))
 	hud.open_inventory(g)
 	var w_btns := []
 	for c in hud.inventory_window.rows.get_children():
@@ -272,7 +272,7 @@ func _initialize() -> void:
 			w_btns.append(c.get_child(2))
 	expect(w_btns[0].text == "Equipped" and w_btns[0].disabled and w_btns[1].text == "Equip", "inventory: the weapon in use cannot be unequipped, another one can be equipped")
 	w_btns[1].pressed.emit()
-	expect(g.weapon.title == "Rapier" and g.stored_weapons[0].title == "Short Sword", "equipping a weapon replaces the old one")
+	expect(g.weapon.title == "Duelist's Blade" and g.stored_weapons[0].title == "Short Sword", "equipping a weapon replaces the old one")
 	hud.inventory_window.close()
 	print("CHECKS: ", checks, "  FAILURES: ", fails)
 	quit(fails)

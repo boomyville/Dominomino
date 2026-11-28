@@ -22,6 +22,7 @@ var rolled := false  # have the unstable / volatile halves been given a value th
 ## Where it came from: "collection" (yours), "equipment" (made by a weapon or an artifact) or "created" (made by
 ## another domino). Only the first stays after the battle: the others belong to what made them.
 var origin := "collection"
+var hand_turn := 1       # the battle turn it last went into your hand (the library counts how long it waited)
 var ang := 0         # how far it is turned in the hand (degrees, adds up so it never spins backwards)
 
 
@@ -58,7 +59,7 @@ func can_upgrade() -> bool:
 
 
 func can_downgrade() -> bool:
-	return data != null and data.max_level() > 1 and data.level > 0
+	return data != null and data.level > data.lowest_level()
 
 
 ## "attack" or "skill" (see DominoData.type).
@@ -214,4 +215,5 @@ func copy():
 	c.b = b
 	c.rolled = rolled
 	c.origin = origin
+	c.hand_turn = hand_turn
 	return c

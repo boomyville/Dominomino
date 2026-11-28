@@ -62,6 +62,11 @@ func fresh(_index: int) -> void:
 	pass
 
 
+## The game is at a point worth saving (the start of a turn, or the end of the run). The real UI writes the save file.
+func autosave_point() -> void:
+	pass
+
+
 ## A domino went into the hand. source: "stack" (drawn or found in the draw pile) or "top" (made by
 ## an effect or a weapon). The real UI flies it in.
 func card_entered(card, source: String) -> void:

@@ -1,5 +1,5 @@
 extends RefCounted
-## The domino catalogue: 121 dominoes plus Garbage (the last entry). The first 80 come from the web build.
+## The domino catalogue: 125 dominoes plus Garbage (the last entry). The first 80 come from the web build.
 ## Ported from the web build (index.html). Edit the numbers here to rebalance.
 ## build() turns this table into DominoData objects (with Effect and Condition objects inside).
 ##
@@ -29,6 +29,7 @@ extends RefCounted
 ##   dominoes from your hand again and discard them)  typedmg ("ty": damage per attack/skill in your hand)
 ##   playeddmg (damage per attack/skill played this turn)  scrap (discard all of a type, shield per domino)
 ##   drawattack (draw attack dominoes from the stack)  berserk (a status: only attacks can be played this turn)
+##   gain (gain energy)  breakshield (remove all of the enemy's shield)  dmgdbl (damage, doubled if the enemy has no shield)
 ##   uptick (+1 to both pips of a domino in your hand, max 6, until the battle ends)
 ##   fury  impS (impair yourself)  impE (impair the enemy)  selfdmg (lose HP)  gen (add random dominoes to stack)  life
 ##   playedpips (damage = pips of every domino you played)  paylife (lose a life, pair with condition "lives2")  pipdmg (damage per pip of one number on the board / in hand)
@@ -162,11 +163,16 @@ const TY := [
 	{"n": "Tactician's Strike", "r": "c", "c": "", "p": [1, 2], "fx": [{"k": "typedmg", "ty": "skill", "m": "K", "a": 0, "b": 2}]},
 	{"n": "Momentum Strike", "r": "c", "c": "", "p": [1, 3], "fx": [{"k": "playeddmg", "ty": "attack", "m": "K", "a": 0, "b": 3}]},
 	{"n": "Scrap Shield", "r": "u", "c": "", "p": [2, 2], "fx": [{"k": "scrap", "ty": "attack", "m": "K", "a": 0, "b": 7}]},
+	# ---- more weapons, and the legendary domino that starts a run
+	{"n": "Rapier Thrust", "r": "w", "tier": "c", "c": "", "p": [2, 3], "fx": [{"k": "breakshield"}, {"k": "dmg", "m": "S", "a": 1, "b": 2}]},
+	{"n": "Machete Chop", "r": "w", "tier": "c", "c": "", "p": [2, 2], "fx": [{"k": "dmgdbl", "m": "S", "a": 1, "b": 1}]},
+	{"n": "Swift Strike", "r": "w", "tier": "c", "c": "turn1", "p": [2, 2], "fx": [{"k": "dmg", "m": "S", "a": 2, "b": 2}, {"k": "draw", "m": "K", "a": 0, "b": 3}, {"k": "discR", "m": "K", "a": 0, "b": 3}]},
+	{"n": "Beginner's Luck", "r": "l", "c": "", "e": true, "p": [0, 0], "fx": [{"k": "gain", "m": "K", "a": 0, "b": 6}], "levels": {"0": {"fx": [{"k": "gain", "m": "K", "a": 0, "b": 3}]}}},
 	{"n": "Garbage", "r": "g", "c": "never", "p": [0, 0], "fx": []},
 ]
 
 ## Index of Garbage: always the last row of TY.
-const GARBAGE := 121
+const GARBAGE := 125
 
 const DominoData = preload("res://scripts/domino_data.gd")
 const PipSpec = preload("res://scripts/pip_spec.gd")

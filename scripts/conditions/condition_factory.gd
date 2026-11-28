@@ -13,6 +13,7 @@ const IDS := {
 	"lowHp": preload("res://scripts/conditions/cond_low_hp.gd"),
 	"enShield": preload("res://scripts/conditions/cond_enemy_shield.gd"),
 	"lives2": preload("res://scripts/conditions/cond_lives.gd"),
+	"turn1": preload("res://scripts/conditions/cond_first_turn.gd"),
 	"hand4": preload("res://scripts/conditions/cond_hand_four.gd"),
 	"onlyAttacks": preload("res://scripts/conditions/cond_only_attacks.gd"),
 	"turn2": preload("res://scripts/conditions/cond_not_first_turn.gd"),

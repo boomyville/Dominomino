@@ -41,6 +41,11 @@ func max_level() -> int:
 	return MAX_LEVEL.get(tier if tier != "" else rarity, 1)
 
 
+## 0 for a domino that can be downgraded (every upgradable kind, and a legendary one), 1 for the rest.
+func lowest_level() -> int:
+	return 0 if max_level() > 1 or rarity == "l" else 1
+
+
 ## "attack" for a domino with an attack in it (damage, hits, pip damage ...), "skill" for everything else
 ## (defence, buffs, drawing, making dominoes). Weapon dominoes, regular ones and created ones all count.
 func type() -> String:
@@ -58,9 +63,9 @@ func has_effect(kind_id: String) -> bool:
 ## flag, see upgrades.gd. Level 1 is the catalogue entry itself.
 func at_level(n: int):
 	var b = base if base != null else self
-	if n == 1 or b.max_level() <= 1:
+	if n == 1 or (b.max_level() <= 1 and b.lowest_level() == 1):
 		return b
-	n = clampi(n, 0, b.max_level())
+	n = clampi(n, b.lowest_level(), b.max_level())
 	if n == 1:
 		return b
 	if not b._levels.has(n):
@@ -78,4 +83,4 @@ func rarity_name() -> String:
 	return RARITY_NAMES[rarity]
 
 
-const RARITY_NAMES := {"c": "Common", "u": "Uncommon", "r": "Rare", "w": "Weapon", "g": "Junk", "x": "Token"}
+const RARITY_NAMES := {"c": "Common", "u": "Uncommon", "r": "Rare", "w": "Weapon", "g": "Junk", "x": "Token", "l": "Legendary"}

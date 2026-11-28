@@ -13,6 +13,8 @@
 [ext_resource type="PackedScene" path="res://scenes/intermission_window.tscn" id="inter"]
 [ext_resource type="PackedScene" path="res://scenes/victory_window.tscn" id="victory"]
 [ext_resource type="PackedScene" path="res://scenes/shop_window.tscn" id="shop"]
+[ext_resource type="PackedScene" path="res://scenes/title_screen.tscn" id="title"]
+[ext_resource type="PackedScene" path="res://scenes/library_window.tscn" id="library"]
 
 [sub_resource type="StyleBoxFlat" id="tray_style"]
 bg_color = Color(1, 1, 1, 1)
@@ -187,6 +189,12 @@ layout_mode = 2
 custom_minimum_size = Vector2(56, 26)
 text = "Discard"
 
+[node name="MenuButton" type="Button" parent="Layout/BottomMargin/BottomBar/Buttons/MenuRow"]
+unique_name_in_owner = true
+layout_mode = 2
+custom_minimum_size = Vector2(46, 26)
+text = "Menu"
+
 [node name="RestartButton" type="Button" parent="Layout/BottomMargin/BottomBar/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -296,6 +304,9 @@ unique_name_in_owner = true
 [node name="GameOver" parent="Windows" instance=ExtResource("over")]
 unique_name_in_owner = true
 
+[node name="TitleScreen" parent="." instance=ExtResource("title")]
+unique_name_in_owner = true
+
 [node name="ModalLayer" type="Control" parent="."]
 unique_name_in_owner = true
 layout_mode = 3
@@ -339,6 +350,9 @@ unique_name_in_owner = true
 unique_name_in_owner = true
 
 [node name="VictoryWindow" parent="ModalLayer/Centered" instance=ExtResource("victory")]
+unique_name_in_owner = true
+
+[node name="LibraryWindow" parent="ModalLayer/Centered" instance=ExtResource("library")]
 unique_name_in_owner = true
 
 [node name="ShopWindow" parent="ModalLayer/Centered" instance=ExtResource("shop")]

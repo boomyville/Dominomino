@@ -98,14 +98,14 @@ func _initialize() -> void:
 
 func _tests() -> void:
 	# ---------- catalogue ----------
-	expect(Dominoes.TY.size() == 122 and Dominoes.TY[Dominoes.GARBAGE].n == "Garbage", "121 dominoes (80 from the web build + 41 new) plus Garbage")
-	var rc := {"c": 0, "u": 0, "r": 0, "w": 0, "g": 0, "x": 0}
+	expect(Dominoes.TY.size() == 126 and Dominoes.TY[Dominoes.GARBAGE].n == "Garbage", "125 dominoes (80 from the web build + 45 new) plus Garbage")
+	var rc := {"c": 0, "u": 0, "r": 0, "w": 0, "g": 0, "x": 0, "l": 0}
 	var names := {}
 	for t in Dominoes.TY:
 		rc[t.r] += 1
 		names[t.n] = true
-	expect(rc == {"c": 43, "u": 44, "r": 27, "w": 6, "g": 1, "x": 1}, "rarity counts 43 common / 44 uncommon / 27 rare / 6 weapon / 1 token %s" % rc)
-	expect(names.size() == 122, "all names are unique")
+	expect(rc == {"c": 43, "u": 44, "r": 27, "w": 9, "g": 1, "x": 1, "l": 1}, "rarity counts 43 common / 44 uncommon / 27 rare / 9 weapon / 1 token / 1 legendary %s" % rc)
+	expect(names.size() == 126, "all names are unique")
 	expect(cat[Dominoes.GARBAGE].title == "Garbage" and cat[Dominoes.GARBAGE].is_garbage(), "Garbage is the last entry")
 	# every effect size matches the balance fixture (tools/dump_domino_values.gd rewrites it after a balance change on purpose)
 	var fixture = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/domino_values.json"))

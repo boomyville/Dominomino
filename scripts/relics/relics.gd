@@ -130,7 +130,16 @@ const WEAPONS := [
 	{"n": "Long Sword", "r": "u", "weapon": true,
 		"adds": [{"t": "Heavy Blade", "n": 2, "when": "battle", "pos": "bottom"}],
 		"text": "Adds 2 Heavy Blade to the BOTTOM of your stack at the start of every battle."},
-	{"n": "Rapier", "r": "u", "weapon": true,
+	{"n": "Rapier", "r": "c", "weapon": true,
+		"adds": [{"t": "Rapier Thrust", "n": 3, "when": "battle", "pos": "stack"}],
+		"text": "Adds 3 Rapier Thrust to your stack at the start of every battle. A Thrust strips the enemy's shield, then hits."},
+	{"n": "Machete", "r": "c", "weapon": true,
+		"adds": [{"t": "Machete Chop", "n": 3, "when": "battle", "pos": "stack"}],
+		"text": "Adds 3 Machete Chop to your stack at the start of every battle. A Chop deals double damage if the enemy has no shield."},
+	{"n": "Swift Sword", "r": "c", "weapon": true,
+		"adds": [{"t": "Swift Strike", "n": 1, "when": "battle", "pos": "top"}, {"t": "Quick Strike", "n": 2, "when": "battle", "pos": "stack"}],
+		"text": "Adds a Swift Strike to the TOP of your stack and 2 Quick Strike to the stack at the start of every battle. Swift Strike hits hard and draws, but must be played on turn 1 and discards 3 dominoes."},
+	{"n": "Duelist's Blade", "r": "u", "weapon": true,
 		"adds": [{"t": "En Garde", "n": 1, "when": "turn", "pos": "hand"}],
 		"text": "Adds an En Garde to your hand at the start of every turn."},
 	{"n": "Sawtooth Blade", "r": "u", "weapon": true,
@@ -154,6 +163,21 @@ static func build() -> Array:
 	var out := []
 	for row in TABLE:
 		out.append(make(row))
+	return out
+
+
+## Up to n different artifacts (or weapons) of one rarity that you do not own, picked at random.
+static func roll_of(rarity: String, owned_ids: Array, n: int, rng: RandomNumberGenerator = null, weapons: bool = false) -> Array:
+	var pool := []
+	for r in (build_weapons() if weapons else build()):
+		if r.rarity == rarity and not owned_ids.has(r.id) and not r.starter:
+			pool.append(r)
+	var out := []
+	for i in n:
+		if pool.is_empty():
+			break
+		var at: int = (rng.randi() if rng != null else randi()) % pool.size()
+		out.append(pool.pop_at(at))
 	return out
 
 

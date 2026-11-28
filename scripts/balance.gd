@@ -9,7 +9,7 @@ const WEIGHT := {
 	"dmg": 1.0, "hit": 1.0, "shield": 0.9, "maxs": 1.5, "heal": 0.8, "draw": 2.0, "tutor": 3.0,
 	"power": 4.0, "boost": 1.0, "fury": 1.8, "impE": 1.5, "impS": -1.5, "selfdmg": -1.2, "discR": -2.0, "discP": -1.0,
 	"energy": -1.5, "gen": 1.0, "life": 10.0, "paylife": -10.0,
-	"addhand": 2.0, "drawattack": 2.0, "berserk": -2.5,
+	"addhand": 2.0, "drawattack": 2.0, "berserk": -2.5, "gain": 1.5,
 }
 ## Flat points for effects with no number.
 const FLAT := {"rerollA": 1.0, "rerollP": 0.8, "uptick": 2.0, "endturn": -3.0, "playedpips": 12.0}
@@ -50,6 +50,10 @@ static func effect_score(e, d, a: int, b: int) -> float:
 		"pipdmg":
 			var own: int =  (1 if a == e.pip else 0) + (1 if b == e.pip else 0)
 			return e.value(s) * (own + 2)
+		"dmgdbl":
+			return e.value(s) * 1.5                                       # doubled about half of the time
+		"breakshield":
+			return 3.0                                                    # about 3 shield of the enemy's
 		"typedmg":
 			return e.value(s) * (2.5 if e.ty == "skill" else 1.5)       # about 2.5 skills / 1.5 other attacks in a hand
 		"playeddmg":
