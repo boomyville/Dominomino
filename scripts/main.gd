@@ -381,6 +381,15 @@ func _drop() -> void:
 # The pending domino can be tapped (to place it) or dragged to another spot.
 # Mouse and touch both arrive as mouse events (touch emulation is on by default).
 
+func _input(event: InputEvent) -> void:
+	if not OS.has_feature("web"):
+		return
+	if event is InputEventMouseButton \
+			and event.button_index == MOUSE_BUTTON_LEFT \
+			and not event.pressed \
+			and drag != null:
+		_on_drag_released(null, event.global_position)
+
 func _unhandled_input(event: InputEvent) -> void:
 	if game.ended or game.busy != 0:
 		return
