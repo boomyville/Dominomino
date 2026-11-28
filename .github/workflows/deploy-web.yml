@@ -70,6 +70,12 @@ jobs:
             --export-release "Web" build/web/index.html
 
           test -s build/web/index.html
+          
+      - name: Add Cross-Origin Isolation workaround
+        run: |
+          cd build/web
+          curl -L https://raw.githubusercontent.com/gzuidhof/coi-serviceworker/master/coi-serviceworker.js -o coi-serviceworker.js
+          sed -i 's|<head>|<head><script src="coi-serviceworker.js"></script>|' index.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
